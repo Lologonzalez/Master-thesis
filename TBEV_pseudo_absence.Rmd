@@ -1,0 +1,769 @@
+---
+title: "TBEV genome-Distribution map"
+author: "mariavincenti"
+date: "2023-03-27"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Genbank TBEV data
+
+The dataset comprises retrieved sequence metadata from NCBI (<https://www.ncbi.nlm.nih.gov/>), NCBI Virus (<https://www.ncbi.nlm.nih.gov/labs/virus/vssi/#/>) and virus pathogen resource (<https://www.viprbrc.org/brc/home.spg?decorator=vipr>).
+
+Metadata contains among other information, data over accession number, date of collection and place of collection.
+
+##Data collected
+
+Good resource: <https://rich-iannone.github.io/DiagrammeR/graphviz_and_mermaid.html>
+
+## Packages
+
+```{r packages, warning=FALSE}
+library(readr)
+library(ggplot2);library(ggmap);library(mapdata);library(pals)
+library(ggpubr);library(viridis)
+library(dplyr);library(stringr);library(reshape2)
+library(rgdal);library(raster)
+library(MASS)
+library(rgeos)
+library(sp)
+library(tidyverse)
+library(scatterpie)
+library(leaflet)
+library(leaflet.minicharts)
+library(magrittr)
+library(tidyr)
+library(DiagrammeR)
+library(lubridate)
+library(knitr)
+library(sf)
+
+
+```
+
+## Set working directory
+
+Everything is on GoogleDrive, on the Loic_TBEV_Thesis folder.
+
+```{r set WD, warning=FALSE}
+
+setwd("/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script")
+```
+
+## Load GADM gpkg (lastest version)
+
+latest version is 4.1: <https://gadm.org/download_world.html>
+
+````{r GADM, warning=FALSE}
+setwd("/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Maps")
+
+GADM.Admin1 <- readOGR(dsn = "/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Maps/gadm_410-levels.gpkg", layer = "ADM_1")
+GADM.Admin2 <- readOGR(dsn = "/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Maps/gadm_410-levels.gpkg", layer = "ADM_2")
+
+
+````
+
+
+
+
+
+```{r}
+#England not in GADM database
+GADM.Admin1@data[973,"NAME_1"] <- "England"
+```
+
+
+##Full database
+
+
+
+```{r PG database, warning=FALSE}
+
+#short database with subtypes information
+#TBEV.isolates <- read.csv("/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Partial_genomes_29032023_subtypes.csv", sep=";")
+#Loic read this XD
+
+
+#long database with incomplete data of subtypes
+TBEV.isolates <- read.csv("/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/TBEVsubtypesall_recovered_updated 2.csv", sep=";")
+
+
+
+# Replace specific values in the virus subtypes column
+# "3 (Siberian Subtype)" is replaced with "Sib"
+# "1 (European Subtype)" is replaced with "Eur"
+# "Baltic and Finish S-TBEV strains" is replaced with "Bal"
+# "2 (Far Eastern Subtype)" is replaced with "FE"
+# Other values are kept unchanged
+TBEV.isolates <- TBEV.isolates %>%
+  mutate(subtype = case_when(
+    subtype == "3 (Siberian Subtype)" ~ "Sib",
+    subtype == "1 (European Subtype)" ~ "Eur",
+    subtype == "Bkl2" ~ "FE",
+    subtype == "2 (Far Eastern Subtype)" ~ "FE",
+    TRUE ~ subtype  # Pour garder les autres valeurs inchangées
+  ))
+
+#correction
+TBEV.isolates[2190,"Admin1"] <- "Ysyk-Köl"
+
+TBEV.isolates[2012,"Admin2"] <- "Pitkyarantskiy"
+
+TBEV.isolates[2013,"Admin2"] <- "Pitkyarantskiy"	
+
+
+
+
+```
+
+
+```{r}
+
+# Extract the first four characters of the collection_date_fixed column and store them in the year column
+TBEV.isolates$year <- substr(TBEV.isolates$collection_date_fixed, 1, 4)
+
+# Convert the year column from character to numeric
+TBEV.isolates$year <- as.numeric(TBEV.isolates$year)
+
+
+
+
+```
+
+##Data pre-treatment
+
+```{r cleaning db, warning=FALSE}
+# replace empty spaces with NA in all Admin units
+TBEV.isolates$Admin0=ifelse(TBEV.isolates$Admin0=="",NA,TBEV.isolates$Admin0)
+TBEV.isolates$Admin1=ifelse(TBEV.isolates$Admin1=="",NA,TBEV.isolates$Admin1)
+TBEV.isolates$Admin2=ifelse(TBEV.isolates$Admin2=="",NA,TBEV.isolates$Admin2)
+TBEV.isolates$Admin3=ifelse(TBEV.isolates$Admin3=="",NA,TBEV.isolates$Admin3)
+TBEV.isolates$Admin4=ifelse(TBEV.isolates$Admin4=="",NA,TBEV.isolates$Admin4)
+```
+
+## Calculation of TBEV sequences per Admin unit
+
+
+```{r TBEV samples per Admin unit, message=FALSE, warning=FALSE}
+### get number of samples with Admin-1, Admin-2, Admin-3, Admin-4 information
+TBEV.with.noAdmin = subset(TBEV.isolates, is.na(Admin0))
+TBEV.with.Admin0 = subset(TBEV.isolates, ! is.na(Admin0))
+TBEV.with.Admin1 = subset(TBEV.isolates, ! is.na(Admin1))
+TBEV.with.Admin2 = subset(TBEV.isolates, ! is.na(Admin2))
+TBEV.with.Admin3 = subset(TBEV.isolates, ! is.na(Admin3))
+TBEV.with.Admin4 = subset(TBEV.isolates, ! is.na(Admin4))
+
+
+```
+
+
+
+```{r}
+
+#filter for RCK
+TBEV.with.Admin2.RCK <- TBEV.with.Admin2 %>% filter(Admin0=="RUS" | Admin0=="CHN" | Admin0=="KAZ")
+
+#filter for Rest
+TBEV.with.Admin1.Rest <- TBEV.with.Admin1 %>% filter(Admin0!="RUS",Admin0!="CHN",Admin0!="KAZ")
+
+
+lst_RCK <- TBEV.with.Admin2.RCK[, c( "Admin2","year","subtype")]
+
+lst_Rest <- TBEV.with.Admin1.Rest[, c("Admin1","year","subtype")]
+
+
+nb_total_dupliques_RCK = sum(duplicated(lst_RCK) | duplicated(lst_RCK, fromLast = TRUE))
+
+
+nb_total_dupliques_Rest = sum(duplicated(lst_Rest) | duplicated(lst_Rest, fromLast = TRUE))
+
+print(nrow(TBEV.with.Admin2.RCK)-nb_total_dupliques_RCK)
+
+print(nrow(TBEV.with.Admin1.Rest)-nb_total_dupliques_Rest)
+
+
+
+```
+
+
+
+##Creation of shapefile of Admin 2 in Russia, China and Kazakhstan and Admin 1 in rest of countries
+
+
+```{r}
+chemin_dossier <- "/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Shapefiles"
+
+GADM.Admin2.RCK <- GADM.Admin2 %>% subset(GID_0 %in% c("RUS","CHN","KAZ"))
+
+GADM.Admin2.RCK@data <- GADM.Admin2.RCK@data %>% 
+  rename(ID = GID_2)
+#List of european countries
+list_countries_europe <- c("ALB", "AND","ARM" ,"AUT", "AZE","BLR", "BEL", "BIH", "BGR", "HRV", "CYP", "CZE", "DNK", "EST", "FRO", "FIN", "FRA","GEO", "DEU", "GIB", "GRC",  "HUN", "ISL", "IRL", "IMN", "ITA", "JEY", "LVA", "LIE", "LTU", "LUX",  "MLT", "MDA", "MCO", "MNE", "NLD", "MKD","NOR", "POL", "PRT", "ROU", "RUS", "SMR", "SRB", "SVK", "SVN", "ESP", "SJM", "SWE", "CHE","TUR", "UKR", "GBR","VAT","XKO")
+
+#List of all countries to be taken for shapefile at admin1 lvl
+list_countries_tot <- unique(c(list_countries_europe, unique(TBEV.with.Admin1$Admin0)))
+
+
+# List of countries to remove
+countries_to_remove <- c("RUS", "CHN", "KAZ")
+
+# Removing the specified countries from the list
+list_countries_Admin1 <- setdiff(list_countries_tot, countries_to_remove)
+
+GADM.Admin1.Rest <- GADM.Admin1 %>% subset(GID_0 %in% list_countries_Admin1)
+
+GADM.Admin1.Rest@data <- GADM.Admin1.Rest@data %>% 
+  rename(ID = GID_1)
+
+# Create a new object that will contain the merged SpatialPolygonsDataFrame
+GADM.all <- GADM.Admin2.RCK
+
+# Identify the missing columns in spdf_B
+missing_columns <- setdiff(names(GADM.Admin2.RCK), names(GADM.Admin1.Rest))
+
+# Add the missing columns and set them to NA
+for (col in missing_columns) {
+  GADM.Admin1.Rest[[col]] <- NA
+}
+
+# Identify the missing columns 
+missing_columns <- setdiff(names(GADM.Admin1.Rest), names(GADM.Admin2.RCK)) 
+
+# Add the missing columns and set them to NA
+for (col in missing_columns) {
+  GADM.Admin2.RCK[[col]] <- NA
+}
+
+
+# Loop through each row
+for (i in 1:nrow(GADM.Admin1.Rest@data)) { 
+  # Check if NAME_1 contains "Minsk" and ENGTYPE_1 contains "City"
+  if (GADM.Admin1.Rest@data[i,"NAME_1"] == "Minsk" & GADM.Admin1.Rest@data[i,"ENGTYPE_1"] == "City") {
+    # If the condition is true, replace the value in NAME_1 with "Minsk City"
+    GADM.Admin1.Rest@data[i,"NAME_1"] <- "Minsk City"
+  }
+}
+
+
+# Merge the two SpatialPolygonsDataFrame
+GADM.all <- rbind(GADM.Admin2.RCK, GADM.Admin1.Rest)
+
+# Ensure that the data is aligned
+rownames(GADM.all@data) <- NULL
+
+# If necessary, ensure that the columns are in the same order
+GADM.all <- GADM.all[, names(GADM.Admin2.RCK)]
+
+
+
+
+# Remove unnecessary columns
+GADM.all@data <- subset(GADM.all@data, select = -NL_NAME_1)
+GADM.all@data <- subset(GADM.all@data, select = -NL_NAME_2)
+GADM.all@data <- subset(GADM.all@data, select = -VARNAME_1)
+GADM.all@data <- subset(GADM.all@data, select = -VARNAME_2)
+GADM.all@data <- subset(GADM.all@data, select = -CC_1)
+GADM.all@data <- subset(GADM.all@data, select = -CC_2)
+GADM.all@data <- subset(GADM.all@data, select = -HASC_1)
+GADM.all@data <- subset(GADM.all@data, select = -HASC_2)
+GADM.all@data <- subset(GADM.all@data, select = -ISO_1)
+GADM.all@data <- subset(GADM.all@data, select = -GID_1)
+GADM.all@data <- subset(GADM.all@data, select = -TYPE_1)
+GADM.all@data <- subset(GADM.all@data, select = -TYPE_2)
+GADM.all@data <- subset(GADM.all@data, select = -ENGTYPE_1)
+GADM.all@data <- subset(GADM.all@data, select = -ENGTYPE_2)
+
+
+```
+
+
+
+
+
+
+
+##Number of admin units per subtype for admin 2 in Russia, China and Kazakhstan and admin 1 in the rest of the countries
+
+
+```{r}
+#List of Admin1/2 for each subtype for RCK and Rest
+#Eur
+TBEV.with.Admin2.Eur <- TBEV.with.Admin2 %>% filter(subtype=="Eur")
+TBEV.with.Admin2.Eur.Russia.China.Kazakhstan <- TBEV.with.Admin2.Eur %>% filter(Admin0=="RUS" | Admin0=="CHN" | Admin0=="KAZ")
+TBEV.with.Admin2.Eur.Russia.China.Kazakhstan.sum = TBEV.with.Admin2.Eur.Russia.China.Kazakhstan %>% group_by(Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+
+TBEV.with.Admin1.Eur <- TBEV.with.Admin1 %>% filter(subtype=="Eur")
+TBEV.with.Admin1.Eur.Rest <- TBEV.with.Admin1.Eur %>% filter(Admin0!="RUS",Admin0!="CHN",Admin0!="KAZ")
+TBEV.with.Admin1.Eur.Rest.sum = TBEV.with.Admin1.Eur.Rest %>% group_by(Admin0,Admin1) %>% summarise(N=length(name))
+ 
+
+#Sib
+TBEV.with.Admin2.Sib <- TBEV.with.Admin2 %>% filter(subtype=="Sib")
+TBEV.with.Admin2.Sib.Russia.China.Kazakhstan <- TBEV.with.Admin2.Sib %>% filter(Admin0=="RUS" | Admin0=="CHN" | Admin0=="KAZ")
+TBEV.with.Admin2.Sib.Russia.China.Kazakhstan.sum = TBEV.with.Admin2.Sib.Russia.China.Kazakhstan %>% group_by(Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+
+TBEV.with.Admin1.Sib <- TBEV.with.Admin1 %>% filter(subtype=="Sib")
+TBEV.with.Admin1.Sib.Rest <- TBEV.with.Admin1.Sib %>% filter(Admin0!="RUS",Admin0!="CHN",Admin0!="KAZ")
+TBEV.with.Admin1.Sib.Rest.sum = TBEV.with.Admin1.Sib.Rest %>% group_by(Admin0,Admin1) %>% summarise(N=length(name))
+
+
+#FE
+TBEV.with.Admin2.FE <- TBEV.with.Admin2 %>% filter(subtype=="FE")
+TBEV.with.Admin2.FE.Russia.China.Kazakhstan <- TBEV.with.Admin2.FE %>% filter(Admin0=="RUS" | Admin0=="CHN" | Admin0=="KAZ")
+TBEV.with.Admin2.FE.Russia.China.Kazakhstan.sum = TBEV.with.Admin2.FE.Russia.China.Kazakhstan %>% group_by(Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+
+TBEV.with.Admin1.FE <- TBEV.with.Admin1 %>% filter(subtype=="FE")
+TBEV.with.Admin1.FE.Rest <- TBEV.with.Admin1.FE %>% filter(Admin0!="RUS",Admin0!="CHN",Admin0!="KAZ")
+TBEV.with.Admin1.FE.Rest.sum = TBEV.with.Admin1.FE.Rest %>% group_by(Admin0,Admin1) %>% summarise(N=length(name))
+
+#unknown
+TBEV.with.Admin2.unknown <- TBEV.with.Admin2 %>% filter(subtype=="unknown")
+TBEV.with.Admin2.unknown.Russia.China.Kazakhstan <- TBEV.with.Admin2.unknown %>% filter(Admin0=="RUS" | Admin0=="CHN" | Admin0=="KAZ")
+TBEV.with.Admin2.unknown.Russia.China.Kazakhstan.sum = TBEV.with.Admin2.unknown.Russia.China.Kazakhstan %>% group_by(Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+
+TBEV.with.Admin1.unknown <- TBEV.with.Admin1 %>% filter(subtype=="unknown")
+TBEV.with.Admin1.unknown.Rest <- TBEV.with.Admin1.unknown %>% filter(Admin0!="RUS",Admin0!="CHN",Admin0!="KAZ")
+TBEV.with.Admin1.unknown.Rest.sum = TBEV.with.Admin1.unknown.Rest %>% group_by(Admin0,Admin1) %>% summarise(N=length(name))
+
+
+
+```
+#graph showing the 3 most frequent vector per subtype
+```{r}
+
+TBEV.with.Admin2.Eur.Russia.China.Kazakhstan.vectors <- TBEV.with.Admin2.Eur.Russia.China.Kazakhstan %>% group_by(host) %>% summarise(N=length(name)) %>% arrange(desc(N)) 
+
+TBEV.with.Admin1.Eur.Rest.vectors <- TBEV.with.Admin1.Eur.Rest %>% group_by(host) %>% summarise(N=length(name)) %>% arrange(desc(N)) 
+
+combined_Eur = rbind(TBEV.with.Admin2.Eur.Russia.China.Kazakhstan.vectors,TBEV.with.Admin1.Eur.Rest.vectors)
+
+# Now aggregate by host and sum the N values
+result_Eur <- aggregate(N ~ host, combined_Eur, sum)
+
+# If you want to order the result by the count
+result_Eur <- result_Eur[order(-result_Eur$N),]
+
+
+TBEV.with.Admin2.Sib.Russia.China.Kazakhstan.vectors <- TBEV.with.Admin2.Sib.Russia.China.Kazakhstan %>% group_by(host) %>% summarise(N=length(name)) %>% arrange(desc(N)) 
+
+TBEV.with.Admin1.Sib.Rest.vectors <- TBEV.with.Admin1.Sib.Rest %>% group_by(host) %>% summarise(N=length(name)) %>% arrange(desc(N)) 
+
+combined_Sib = rbind(TBEV.with.Admin2.Sib.Russia.China.Kazakhstan.vectors,TBEV.with.Admin1.Sib.Rest.vectors)
+
+# Now aggregate by host and sum the N values
+result_Sib <- aggregate(N ~ host, combined_Sib, sum)
+
+# If you want to order the result by the count
+result_Sib <- result_Sib[order(-result_Sib$N),]
+
+
+TBEV.with.Admin2.FE.Russia.China.Kazakhstan.vectors <- TBEV.with.Admin2.FE.Russia.China.Kazakhstan %>% group_by(host) %>% summarise(N=length(name)) %>% arrange(desc(N)) 
+
+TBEV.with.Admin1.FE.Rest.vectors <- TBEV.with.Admin1.FE.Rest %>% group_by(host) %>% summarise(N=length(name)) %>% arrange(desc(N)) 
+
+combined_FE = rbind(TBEV.with.Admin2.FE.Russia.China.Kazakhstan.vectors,TBEV.with.Admin1.FE.Rest.vectors)
+
+# Now aggregate by host and sum the N values
+result_FE <- aggregate(N ~ host, combined_FE, sum)
+
+# If you want to order the result by the count
+result_FE <- result_FE[order(-result_FE$N),]
+
+colnames(result_Eur) <- c("host_Eur","N_Eur")
+colnames(result_Sib) <- c("host_Sib","N_Sib")
+colnames(result_FE) <- c("host_FE","N_FE")
+
+
+```
+
+
+##Pseudo-absence for each subtype in shapefile data
+```{r}
+# Create a new column filled with 0s
+GADM.all@data$Eur <- 0
+GADM.all@data$Sib <- 0
+GADM.all@data$FE <- 0
+#GADM.all@data$Bal <- 0
+GADM.all@data$unknown <- 0
+GADM.all@data$year_Eur <- NA
+GADM.all@data$year_Sib <- NA
+GADM.all@data$year_FE <- NA
+#GADM.all@data$year_Bal <- NA
+GADM.all@data$year_unknown <- NA
+
+#Eur
+lst_RCK_Eur <- TBEV.with.Admin2.Eur.Russia.China.Kazakhstan[, c("Admin1", "Admin2","year")]
+
+for (j in 1:nrow(lst_RCK_Eur)) {
+  
+  row_lst_RCK_Eur <- lst_RCK_Eur[j, ]
+
+  for (i in 1:nrow(GADM.all@data)) {
+    # Vérifiez si la région de la ligne actuelle est présente dans les données GADM
+    if (GADM.all@data[i, "NAME_2"] %in% row_lst_RCK_Eur$Admin2 & GADM.all@data[i, "NAME_1"] %in% row_lst_RCK_Eur$Admin1) {
+      # Si oui, assignez 1 à la colonne "Eur" de la même ligne
+      GADM.all@data[i, "Eur"] <- 1
+      
+      # Ajoutez l'année à la colonne year_Eur, créez une liste si plusieurs années sont présentes
+      if (is.na(GADM.all@data[i, "year_Eur"])) {
+        # Si c'est la première occurrence, initialisez avec l'année actuelle
+        GADM.all@data[i, "year_Eur"] <- as.character(row_lst_RCK_Eur$year)
+      } else {
+        # Si des années sont déjà présentes, ajoutez la nouvelle année à la liste
+        existing_years <- strsplit(GADM.all@data[i, "year_Eur"], ", ")[[1]]
+        if (!(as.character(row_lst_RCK_Eur$year) %in% existing_years)) {
+          GADM.all@data[i, "year_Eur"] <- paste(GADM.all@data[i, "year_Eur"], row_lst_RCK_Eur$year, sep = ", ")
+        }
+      }
+    }
+  }
+}
+
+
+
+
+
+lst_Eur_Rest <- TBEV.with.Admin1.Eur.Rest[, c("Admin1", "year")]
+
+for (j in 1:nrow(lst_Eur_Rest)) {
+
+  row_lst_Eur_Rest <- lst_Eur_Rest[j, ]
+
+  for (i in 1:nrow(GADM.all)) {
+    # Check if the value in the current row of "NAME_1" column is present in "Admin1" column
+    if (GADM.all@data[i,"NAME_1"] %in% row_lst_Eur_Rest$Admin1) {
+      # If yes, assign 1 to the "Eur" column in the same row
+      GADM.all@data[i,"Eur"] <- 1
+      # Add the year to the year_Eur column, create a list if multiple years are present
+      if (is.na(GADM.all@data[i,"year_Eur"])) {
+        # If it's the first occurrence, initialize with the current year
+        GADM.all@data[i,"year_Eur"] <- as.character(row_lst_Eur_Rest$year)
+      } else {
+        # If years are already present, add the new year to the list
+        existing_years <- strsplit(GADM.all@data[i,"year_Eur"], ", ")[[1]]
+        if (!(as.character(row_lst_Eur_Rest$year) %in% existing_years)) {
+          GADM.all@data[i,"year_Eur"] <- paste(GADM.all@data[i,"year_Eur"], row_lst_Eur_Rest$year, sep = ", ")
+        }
+      }
+    }
+  }
+}
+
+#Sib
+lst_RCK_Sib <- TBEV.with.Admin2.Sib.Russia.China.Kazakhstan[, c("Admin1", "Admin2","year")]
+
+for (j in 1:nrow(lst_RCK_Sib)) {
+  
+  row_lst_RCK_Sib <- lst_RCK_Sib[j, ]
+
+  for (i in 1:nrow(GADM.all@data)) {
+    # Check if the value in the current row of "NAME_2" column is present in "Admin2" column
+    if (GADM.all@data[i, "NAME_2"] %in% row_lst_RCK_Sib$Admin2 & GADM.all@data[i, "NAME_1"] %in% row_lst_RCK_Sib$Admin1) {
+      # If yes, assign 1 to the "Sib" column in the same row
+      GADM.all@data[i, "Sib"] <- 1
+      # Add the year to the year_Sib column, create a list if multiple years are present
+      if (is.na(GADM.all@data[i, "year_Sib"])) {
+        # If it's the first occurrence, initialize with the current year
+        GADM.all@data[i, "year_Sib"] <- as.character(row_lst_RCK_Sib$year)
+      } else {
+        # If years are already present, add the new year to the list
+        existing_years <- strsplit(GADM.all@data[i, "year_Sib"], ", ")[[1]]
+        if (!(as.character(row_lst_RCK_Sib$year) %in% existing_years)) {
+          GADM.all@data[i, "year_Sib"] <- paste(GADM.all@data[i, "year_Sib"], row_lst_RCK_Sib$year, sep = ", ")
+        }
+      }
+    }
+  }
+}
+
+
+lst_Sib_Rest <- TBEV.with.Admin1.Sib.Rest[, c("Admin1", "year")]
+
+for (j in 1:nrow(lst_Sib_Rest)) {
+  
+  row_lst_Sib_Rest <- lst_Sib_Rest[j, ]
+
+  for (i in 1:nrow(GADM.all@data)) {
+    # Check if the value in the current row of "NAME_1" column is present in "Admin1" column
+    if (GADM.all@data[i,"NAME_1"] %in% row_lst_Sib_Rest$Admin1) {
+      # If yes, assign 1 to the "Sib" column in the same row
+      GADM.all@data[i,"Sib"] <- 1
+      # Add the year to the year_Sib column, create a list if multiple years are present
+      if (is.na(GADM.all@data[i,"year_Sib"])) {
+        # If it's the first occurrence, initialize with the current year
+        GADM.all@data[i,"year_Sib"] <- as.character(row_lst_Sib_Rest$year)
+      } else {
+        # If years are already present, add the new year to the list
+        existing_years <- strsplit(GADM.all@data[i,"year_Sib"], ", ")[[1]]
+        if (!(as.character(row_lst_Sib_Rest$year) %in% existing_years)) {
+          GADM.all@data[i,"year_Sib"] <- paste(GADM.all@data[i,"year_Sib"], row_lst_Sib_Rest$year, sep = ", ")
+        }
+      }
+    }
+  }
+}
+
+#FE
+lst_RCK_FE <- TBEV.with.Admin2.FE.Russia.China.Kazakhstan[, c("Admin1", "Admin2","year")]
+
+for (j in 1:nrow(lst_RCK_FE)) {
+  
+  row_lst_RCK_FE <- lst_RCK_FE[j, ]
+
+  for (i in 1:nrow(GADM.all@data)) {
+    # Check if the value in the current row of "NAME_2" column is present in "Admin2" column
+    if (GADM.all@data[i, "NAME_2"] %in% row_lst_RCK_FE$Admin2 & GADM.all@data[i, "NAME_1"] %in% row_lst_RCK_FE$Admin1) {
+      # If yes, assign 1 to the "FE" column in the same row
+      GADM.all@data[i, "FE"] <- 1
+      # Add the year to the year_FE column, create a list if multiple years are present
+      if (is.na(GADM.all@data[i, "year_FE"])) {
+        # If it's the first occurrence, initialize with the current year
+        GADM.all@data[i, "year_FE"] <- as.character(row_lst_RCK_FE$year)
+      } else {
+        # If years are already present, add the new year to the list
+        existing_years <- strsplit(GADM.all@data[i, "year_FE"], ", ")[[1]]
+        if (!(as.character(row_lst_RCK_FE$year) %in% existing_years)) {
+          GADM.all@data[i, "year_FE"] <- paste(GADM.all@data[i, "year_FE"], row_lst_RCK_FE$year, sep = ", ")
+        }
+      }
+    }
+  }
+}
+
+lst_FE_Rest <- TBEV.with.Admin1.FE.Rest[, c("Admin1", "year")]
+
+for (j in 1:nrow(lst_FE_Rest)) {
+  
+  row_lst_FE_Rest <- lst_FE_Rest[j, ]
+
+  for (i in 1:nrow(GADM.all@data)) {
+    # Check if the value in the current row of "NAME_1" column is present in "Admin1" column
+    if (GADM.all@data[i,"NAME_1"] %in% row_lst_FE_Rest$Admin1) {
+      # If yes, assign 1 to the "FE" column in the same row
+      GADM.all@data[i,"FE"] <- 1
+      # Add the year to the year_FE column, create a list if multiple years are present
+      if (is.na(GADM.all@data[i,"year_FE"])) {
+        # If it's the first occurrence, initialize with the current year
+        GADM.all@data[i,"year_FE"] <- as.character(row_lst_FE_Rest$year)
+      } else {
+        # If years are already present, add the new year to the list
+        existing_years <- strsplit(GADM.all@data[i,"year_FE"], ", ")[[1]]
+        if (!(as.character(row_lst_FE_Rest$year) %in% existing_years)) {
+          GADM.all@data[i,"year_FE"] <- paste(GADM.all@data[i,"year_FE"], row_lst_FE_Rest$year, sep = ", ")
+        }
+      }
+    }
+  }
+}
+
+
+
+#unknown
+lst_RCK_unknown <- TBEV.with.Admin2.unknown.Russia.China.Kazakhstan[, c("Admin1", "Admin2","year")]
+
+for (j in 1:nrow(lst_RCK_unknown)) {
+  
+  row_lst_RCK_unknown <- lst_RCK_unknown[j, ]
+
+  for (i in 1:nrow(GADM.all@data)) {
+    # Check if the value in the current row of "NAME_2" column is present in "Admin2" column
+    if (GADM.all@data[i, "NAME_2"] %in% row_lst_RCK_unknown$Admin2 & GADM.all@data[i, "NAME_1"] %in% row_lst_RCK_unknown$Admin1) {
+      # If yes, assign 1 to the "unknown" column in the same row
+      GADM.all@data[i, "unknown"] <- 1
+      # Add the year to the year_unknown column, create a list if multiple years are present
+      if (is.na(GADM.all@data[i, "year_unknown"])) {
+        # If it's the first occurrence, initialize with the current year
+        GADM.all@data[i, "year_unknown"] <- as.character(row_lst_RCK_unknown$year)
+      } else {
+        # If years are already present, add the new year to the list
+        existing_years <- strsplit(GADM.all@data[i, "year_unknown"], ", ")[[1]]
+        if (!(as.character(row_lst_RCK_unknown$year) %in% existing_years)) {
+          GADM.all@data[i, "year_unknown"] <- paste(GADM.all@data[i, "year_unknown"], row_lst_RCK_unknown$year, sep = ", ")
+        }
+      }
+    }
+  }
+}
+
+lst_unknown_Rest <- TBEV.with.Admin1.unknown.Rest[, c("Admin1", "year")]
+
+for (j in 1:nrow(lst_unknown_Rest)) {
+  
+  row_lst_unknown_Rest <- lst_unknown_Rest[j, ]
+
+  for (i in 1:nrow(GADM.all@data)) {
+    # Check if the value in the current row of "NAME_1" column is present in "Admin1" column
+    if (GADM.all@data[i,"NAME_1"] %in% row_lst_unknown_Rest$Admin1) {
+      # If yes, assign 1 to the "unknown" column in the same row
+      GADM.all@data[i,"unknown"] <- 1
+      # Add the year to the year_unknown column, create a list if multiple years are present
+      if (is.na(GADM.all@data[i,"year_unknown"])) {
+        # If it's the first occurrence, initialize with the current year
+        GADM.all@data[i,"year_unknown"] <- as.character(row_lst_unknown_Rest$year)
+      } else {
+        # If years are already present, add the new year to the list
+        existing_years <- strsplit(GADM.all@data[i,"year_unknown"], ", ")[[1]]
+        if (!(as.character(row_lst_unknown_Rest$year) %in% existing_years)) {
+          GADM.all@data[i,"year_unknown"] <- paste(GADM.all@data[i,"year_unknown"], row_lst_unknown_Rest$year, sep = ", ")
+        }
+      }
+    }
+  }
+}
+
+
+#puting years in order
+GADM.all@data$year_Eur <- sapply(GADM.all@data$year_Eur, function(x) {
+  sorted_years <- sort(as.numeric(strsplit(x, ", ")[[1]]))
+  paste(sorted_years, collapse = ", ")
+})
+
+GADM.all@data$year_Sib <- sapply(GADM.all@data$year_Sib, function(x) {
+  sorted_years <- sort(as.numeric(strsplit(x, ", ")[[1]]))
+  paste(sorted_years, collapse = ", ")
+})
+
+GADM.all@data$year_FE <- sapply(GADM.all@data$year_FE, function(x) {
+  sorted_years <- sort(as.numeric(strsplit(x, ", ")[[1]]))
+  paste(sorted_years, collapse = ", ")
+})
+
+#GADM.all@data$year_Bal <- sapply(GADM.all@data$year_Bal, function(x) {
+ # sorted_years <- sort(as.numeric(strsplit(x, ", ")[[1]]))
+  #paste(sorted_years, collapse = ", ")
+#})
+
+GADM.all@data$year_unknown <- sapply(GADM.all@data$year_unknown, function(x) {
+  sorted_years <- sort(as.numeric(strsplit(x, ", ")[[1]]))
+  paste(sorted_years, collapse = ", ")
+})
+
+
+#ajouter/enlever bal ici
+GADM.all@data$sum <- rowSums(GADM.all@data[, c("Eur", "Sib", "FE",  "unknown")])
+
+# Comptez le nombre de lignes où la somme est supérieure à zéro
+nombre_lignes_presence <- sum(GADM.all@data$sum >0)
+
+#Number of presence for each subtype
+#ajouter/enlever bal ici
+presence_counts <- colSums(GADM.all@data[, c('Eur', 'Sib', 'FE', 'unknown')])
+
+
+
+```
+
+
+
+#absence for each subtype
+```{r}
+
+GADM.all.data <- GADM.all@data
+
+# Votre data frame est GADM.all.data
+# Initialisation d'un vecteur pour stocker les résultats
+#ajouter/enlever bal ici
+absence_counts <- c(Eur=0, Sib=0, FE=0, unknown=0)
+
+# Assurez-vous que toutes les colonnes de sous-type sont numériques
+subtype_columns <- names(absence_counts)
+
+# Calcul pour chaque sous-type
+for (Subtype in subtype_columns) {
+  # Créer un vecteur booléen pour l'absence du sous-type spécifique
+  absence_of_subtype <- GADM.all.data[[Subtype]] == 0
+  
+  # Créer un vecteur booléen pour la présence d'au moins un autre sous-type
+  # en excluant le sous-type actuel des calculs
+  presence_of_others <- GADM.all.data$sum > 0
+  
+  # Compter le nombre de fois où le sous-type est absent et au moins un autre est présent
+  absence_counts[Subtype] <- sum(absence_of_subtype & presence_of_others)
+}
+
+
+```
+
+#absence for each subtype without unknown
+```{r}
+
+#remove unknown
+GADM.all.data.no.unknown <- GADM.all.data %>% filter(unknown==0)
+
+
+# Votre data frame est GADM.all.data
+# Initialisation d'un vecteur pour stocker les résultats
+#ajouter/enlever bal ici
+absence_counts_no_unknown <- c(Eur=0, Sib=0, FE=0, unknown=0)
+
+# Assurez-vous que toutes les colonnes de sous-type sont numériques
+subtype_columns_no_unknown <- names(absence_counts_no_unknown)
+
+# Calcul pour chaque sous-type
+for (Subtype in subtype_columns_no_unknown) {
+  # Créer un vecteur booléen pour l'absence du sous-type spécifique
+  absence_of_subtype_no_unknown <- GADM.all.data.no.unknown[[Subtype]] == 0
+  
+  # Créer un vecteur booléen pour la présence d'au moins un autre sous-type
+  # en excluant le sous-type actuel des calculs
+  presence_of_others_no_unknown <- GADM.all.data.no.unknown$sum > 0
+  
+  # Compter le nombre de fois où le sous-type est absent et au moins un autre est présent
+  absence_counts_no_unknown[Subtype] <- sum(absence_of_subtype_no_unknown & presence_of_others_no_unknown)
+}
+
+summary.no.unkown <- colSums(GADM.all.data.no.unknown[, c('Eur', 'Sib', 'FE', 'unknown')])
+
+
+```
+
+
+
+
+#Dataframe pour tout résumer + shapefile
+```{r}
+
+pseudo_absence_dataframe <- data.frame(presence_counts,absence_counts,absence_counts_no_unknown)
+
+
+#shapefile(GADM.all, paste0(chemin_dossier, "/GADM.all."),overwrite=TRUE)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

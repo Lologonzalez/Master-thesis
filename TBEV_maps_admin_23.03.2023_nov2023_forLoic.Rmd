@@ -1,0 +1,2586 @@
+---
+title: "TBEV genome-Distribution map"
+author: "mariavincenti"
+date: "2023-03-27"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Genbank TBEV data
+
+The dataset comprises retrieved sequence metadata from NCBI (<https://www.ncbi.nlm.nih.gov/>), NCBI Virus (<https://www.ncbi.nlm.nih.gov/labs/virus/vssi/#/>) and virus pathogen resource (<https://www.viprbrc.org/brc/home.spg?decorator=vipr>).
+
+Metadata contains among other information, data over accession number, date of collection and place of collection.
+
+##Data collected
+
+Good resource: <https://rich-iannone.github.io/DiagrammeR/graphviz_and_mermaid.html>
+
+## Packages
+
+```{r packages, warning=FALSE}
+library(readr)
+library(ggplot2);library(ggmap);library(mapdata);library(pals)
+library(ggpubr);library(viridis)
+library(dplyr);library(stringr);library(reshape2)
+library(rgdal);library(raster)
+library(MASS)
+library(rgeos)
+library(sp)
+library(tidyverse)
+library(scatterpie)
+library(leaflet)
+library(leaflet.minicharts)
+library(magrittr)
+library(tidyr)
+library(DiagrammeR)
+library(lubridate)
+library(knitr)
+library(sf)
+library(cowplot)
+library(grid)
+
+
+```
+
+## Set working directory
+
+Everything is on GoogleDrive, on the Loic_TBEV_Thesis folder.
+
+```{r set WD, warning=FALSE}
+
+setwd("/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script")
+```
+
+## Load GADM gpkg (lastest version)
+
+latest version is 4.1: <https://gadm.org/download_world.html>
+
+````{r GADM, warning=FALSE}
+setwd("/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Maps")
+
+
+GADM.Admin0 <- readOGR(dsn = "/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Maps/gadm_410-levels.gpkg", layer = "ADM_0")
+GADM.Admin0 = subset(GADM.Admin0, ! GID_0 == "XCA") # Get rid of Caspian Sea as a polygon
+
+GADM.Admin1 <- readOGR(dsn = "/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Maps/gadm_410-levels.gpkg", layer = "ADM_1")
+GADM.Admin2 <- readOGR(dsn = "/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Maps/gadm_410-levels.gpkg", layer = "ADM_2")
+GADM.Admin3 <- readOGR(dsn = "/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Maps/gadm_410-levels.gpkg", layer = "ADM_3")
+GADM.Admin4 <- readOGR(dsn = "/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Maps/gadm_410-levels.gpkg", layer = "ADM_4")
+
+```
+
+```{r}
+#England not in GADM database
+GADM.Admin1@data[973,"NAME_1"] <- "England"
+```
+
+
+##Full database
+
+
+
+```{r PG database, warning=FALSE}
+
+#short database with subtypes information
+#TBEV.isolates <- read.csv("/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Partial_genomes_29032023_subtypes.csv", sep=";")
+#Loic read this XD
+
+
+#long database with incomplete data of subtypes
+TBEV.isolates <- read.csv("/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/TBEVsubtypesall_recovered_updated 2.csv", sep=";")
+
+#TBEV <- read.csv("/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/TBEV_allsamples_2300_05.10.2022.csv", sep=";")
+
+
+
+
+
+
+# Replace specific values in the virus subtypes column
+# "3 (Siberian Subtype)" is replaced with "Sib"
+# "1 (European Subtype)" is replaced with "Eur"
+# "Baltic and Finish S-TBEV strains" is replaced with "Bal"
+# "2 (Far Eastern Subtype)" is replaced with "FE"
+# Other values are kept unchanged
+TBEV.isolates <- TBEV.isolates %>%
+  mutate(subtype = case_when(
+    subtype == "3 (Siberian Subtype)" ~ "Sib",
+    subtype == "1 (European Subtype)" ~ "Eur",
+    subtype == "Bkl2" ~ "FE",
+    subtype == "2 (Far Eastern Subtype)" ~ "FE",
+    TRUE ~ subtype  # Pour garder les autres valeurs inchangées
+  ))
+
+
+#TBEV.isolates <- subset(TBEV.isolates, subtype != "")
+
+TBEV.isolates[2190,"Admin1"] <- "Ysyk-Köl"
+
+
+```
+
+##Data pre-treatment
+
+```{r cleaning db, warning=FALSE}
+# replace empty spaces with NA in all Admin units
+TBEV.isolates$Admin0=ifelse(TBEV.isolates$Admin0=="",NA,TBEV.isolates$Admin0)
+TBEV.isolates$Admin1=ifelse(TBEV.isolates$Admin1=="",NA,TBEV.isolates$Admin1)
+TBEV.isolates$Admin2=ifelse(TBEV.isolates$Admin2=="",NA,TBEV.isolates$Admin2)
+TBEV.isolates$Admin3=ifelse(TBEV.isolates$Admin3=="",NA,TBEV.isolates$Admin3)
+TBEV.isolates$Admin4=ifelse(TBEV.isolates$Admin4=="",NA,TBEV.isolates$Admin4)
+```
+
+## Calculation of TBEV sequences per Admin unit
+
+
+```{r TBEV samples per Admin unit, message=FALSE, warning=FALSE}
+### get number of samples with Admin-1, Admin-2, Admin-3, Admin-4 information
+TBEV.with.noAdmin = subset(TBEV.isolates, is.na(Admin0))
+TBEV.with.Admin0 = subset(TBEV.isolates, ! is.na(Admin0))
+TBEV.with.Admin1 = subset(TBEV.isolates, ! is.na(Admin1))
+TBEV.with.Admin2 = subset(TBEV.isolates, ! is.na(Admin2))
+TBEV.with.Admin3 = subset(TBEV.isolates, ! is.na(Admin3))
+TBEV.with.Admin4 = subset(TBEV.isolates, ! is.na(Admin4))
+
+with.Admin0.sum = TBEV.with.Admin0 %>% group_by(Country,Admin0) %>% summarise(N=length(name))
+with.Admin1.sum = TBEV.with.Admin1 %>% group_by(Country,Admin0,Admin1) %>% summarise(N=length(name))
+with.Admin2.sum = TBEV.with.Admin2 %>% group_by(Country,Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+with.Admin3.sum = TBEV.with.Admin3 %>% group_by(Country,Admin0,Admin1,Admin2,Admin3) %>% summarise(N=length(name))
+with.Admin4.sum = TBEV.with.Admin4 %>% group_by(Country,Admin0,Admin1,Admin2,Admin3,Admin4) %>% summarise(N=length(name))
+
+print(paste("Number of TBEV sequences in Admin 0 : ",nrow(TBEV.with.Admin0)))
+print(paste("Number of TBEV sequences in Admin 1 : ",nrow(TBEV.with.Admin1)))
+print(paste("Number of TBEV sequences in Admin 2 : ",nrow(TBEV.with.Admin2)))
+print(paste("Number of TBEV sequences in Admin 3 : ",nrow(TBEV.with.Admin3)))
+print(paste("Number of TBEV sequences in Admin 4 : ",nrow(TBEV.with.Admin4)))
+
+print(paste("Number of Admin 0 units containing TBEV sequences (one or more) : ",nrow(with.Admin0.sum)))
+print(paste("Number of Admin 1 units containing TBEV sequences (one or more) : ",nrow(with.Admin1.sum)))
+print(paste("Number of Admin 2 units containing TBEV sequences (one or more) : ",nrow(with.Admin2.sum)))
+print(paste("Number of Admin 3 units containing TBEV sequences (one or more) : ",nrow(with.Admin3.sum)))
+print(paste("Number of Admin 4 units containing TBEV sequences (one or more) : ",nrow(with.Admin4.sum)))
+
+
+
+
+
+```
+
+
+
+
+
+
+
+##Creation of shapefile of Admin 2 in Russia and China and Admin 1 in rest of countries
+
+
+```{r}
+chemin_dossier <- "/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/Shapefiles"
+
+GADM.Admin2.RCK <- GADM.Admin2 %>% subset(GID_0 %in% c("RUS", "CHN","KAZ"))
+
+
+#List of european countries
+list_countries_europe <- c("ALB", "AND","ARM" ,"AUT", "AZE","BLR", "BEL", "BIH", "BGR", "HRV", "CYP", "CZE", "DNK", "EST", "FRO", "FIN", "FRA","GEO", "DEU", "GIB", "GRC",  "HUN", "ISL", "IRL", "IMN", "ITA", "JEY", "LVA", "LIE", "LTU", "LUX",  "MLT", "MDA", "MCO", "MNE", "NLD", "MKD","NOR", "POL", "PRT", "ROU", "RUS", "SMR", "SRB", "SVK", "SVN", "ESP", "SJM", "SWE", "CHE","TUR", "UKR", "GBR","VAT","XKO")
+
+#List of all countries to be taken for shapefile at admin1 lvl
+list_countries_tot <- unique(c(list_countries_europe, unique(TBEV.with.Admin1$Admin0)))
+
+
+# List of countries to remove
+countries_to_remove <- c("RUS", "CHN", "KAZ")
+
+# Removing the specified countries from the list
+list_countries_Admin1 <- setdiff(list_countries_tot, countries_to_remove)
+
+GADM.Admin1.Rest <- GADM.Admin1 %>% subset(GID_0 %in% list_countries_Admin1)
+
+
+# Créez un nouvel objet qui contiendra les deux SpatialPolygonsDataFrame fusionnés
+GADM.all <- GADM.Admin2.RCK
+
+# Identifiez les colonnes manquantes dans spdf_B
+missing_columns <- setdiff(names(GADM.Admin2.RCK), names(GADM.Admin1.Rest))
+
+# Ajoutez les colonnes manquantes à spdf_B et définissez-les à NA
+for (col in missing_columns) {
+  GADM.Admin1.Rest[[col]] <- NA
+}
+
+# Identifiez les colonnes manquantes dans spdf_A
+missing_columns <- setdiff(names(GADM.Admin1.Rest), names(GADM.Admin2.RCK))
+
+# Ajoutez les colonnes manquantes à spdf_A et définissez-les à NA
+for (col in missing_columns) {
+  GADM.Admin2.RCK[[col]] <- NA
+}
+
+# Fusionnez les deux SpatialPolygonsDataFrame
+GADM.all <- rbind(GADM.Admin2.RCK, GADM.Admin1.Rest)
+
+# Assurez-vous que les données sont alignées
+rownames(GADM.all@data) <- NULL
+
+# Si nécessaire, assurez-vous que les colonnes sont dans le même ordre
+GADM.all <- GADM.all[, names(GADM.Admin2.RCK)]
+
+
+
+
+```
+
+
+
+
+```{r}
+
+RCK <- TBEV.with.Admin2 %>% filter(Country=="Russia" | Country=="China" | Country=="Kazakhstan")
+
+RCK <- RCK %>% group_by(Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+
+Rest <- TBEV.with.Admin1 %>% filter(Country!="Russia" & Country!="China" & Country!="Kazakhstan")
+
+Rest <- Rest %>% group_by(Admin0,Admin1) %>% summarise(N=length(name))
+
+
+
+
+```
+
+
+
+
+##Number of admin units per subtype for admin 2 in Russia, China and Kazakhstan and admin 1 in the rest of the countries
+
+
+```{r}
+#Number of Admin presence for each subtype    
+#Eur
+TBEV.with.Admin2.Eur <- TBEV.with.Admin2 %>% filter(subtype=="Eur")
+TBEV.with.Admin2.Eur.Russia.China.Kazakhstan <- TBEV.with.Admin2.Eur %>% filter(Admin0=="RUS" | Admin0=="CHN" | Admin0=="KAZ")
+TBEV.with.Admin1.Eur <- TBEV.with.Admin1 %>% filter(subtype=="Eur")
+TBEV.with.Admin1.Eur.Rest <- TBEV.with.Admin1.Eur %>% filter(Admin0!="RUS",Admin0!="CHN",Admin0!="KAZ")
+
+TBEV.with.Admin2.Eur.Russia.China.Kazakhstan.sum = TBEV.with.Admin2.Eur.Russia.China.Kazakhstan %>% group_by(Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+
+TBEV.with.Admin1.Eur.Rest.sum = TBEV.with.Admin1.Eur.Rest %>% group_by(Admin0,Admin1) %>% summarise(N=length(name))
+ 
+
+#Sib
+TBEV.with.Admin2.Sib <- TBEV.with.Admin2 %>% filter(subtype=="Sib")
+TBEV.with.Admin2.Sib.Russia.China.Kazakhstan <- TBEV.with.Admin2.Sib %>% filter(Admin0=="RUS" | Admin0=="CHN" | Admin0=="KAZ")
+TBEV.with.Admin1.Sib <- TBEV.with.Admin1 %>% filter(subtype=="Sib")
+TBEV.with.Admin1.Sib.Rest <- TBEV.with.Admin1.Sib %>% filter(Admin0!="RUS",Admin0!="CHN",Admin0!="KAZ")
+
+TBEV.with.Admin2.Sib.Russia.China.Kazakhstan.sum = TBEV.with.Admin2.Sib.Russia.China.Kazakhstan %>% group_by(Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+
+TBEV.with.Admin1.Sib.Rest.sum = TBEV.with.Admin1.Sib.Rest %>% group_by(Admin0,Admin1) %>% summarise(N=length(name))
+
+
+#FE
+TBEV.with.Admin2.FE <- TBEV.with.Admin2 %>% filter(subtype=="FE")
+TBEV.with.Admin2.FE.Russia.China.Kazakhstan <- TBEV.with.Admin2.FE %>% filter(Admin0=="RUS" | Admin0=="CHN" | Admin0=="KAZ")
+TBEV.with.Admin1.FE <- TBEV.with.Admin1 %>% filter(subtype=="FE")
+TBEV.with.Admin1.FE.Rest <- TBEV.with.Admin1.FE %>% filter(Admin0!="RUS",Admin0!="CHN",Admin0!="KAZ")
+
+TBEV.with.Admin2.FE.Russia.China.Kazakhstan.sum = TBEV.with.Admin2.FE.Russia.China.Kazakhstan %>% group_by(Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+
+TBEV.with.Admin1.FE.Rest.sum = TBEV.with.Admin1.FE.Rest %>% group_by(Admin0,Admin1) %>% summarise(N=length(name))
+
+
+#Bal
+TBEV.with.Admin2.Bal <- TBEV.with.Admin2 %>% filter(subtype=="Bal")
+TBEV.with.Admin2.Bal.Russia.China.Kazakhstan <- TBEV.with.Admin2.Bal %>% filter(Admin0=="RUS" | Admin0=="CHN" | Admin0=="KAZ")
+TBEV.with.Admin1.Bal <- TBEV.with.Admin1 %>% filter(subtype=="Bal")
+TBEV.with.Admin1.Bal.Rest <- TBEV.with.Admin1.Bal %>% filter(Admin0!="RUS",Admin0!="CHN",Admin0!="KAZ")
+
+TBEV.with.Admin2.Bal.Russia.China.Kazakhstan.sum = TBEV.with.Admin2.Bal.Russia.China.Kazakhstan %>% group_by(Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+
+TBEV.with.Admin1.Bal.Rest.sum = TBEV.with.Admin1.Bal.Rest %>% group_by(Admin0,Admin1) %>% summarise(N=length(name))
+
+
+#unknown
+TBEV.with.Admin2.unknown <- TBEV.with.Admin2 %>% filter(subtype=="unknown")
+TBEV.with.Admin2.unknown.Russia.China.Kazakhstan <- TBEV.with.Admin2.unknown %>% filter(Admin0=="RUS" | Admin0=="CHN" | Admin0=="KAZ")
+TBEV.with.Admin1.unknown <- TBEV.with.Admin1 %>% filter(subtype=="unknown")
+TBEV.with.Admin1.unknown.Rest <- TBEV.with.Admin1.unknown %>% filter(Admin0!="RUS",Admin0!="CHN",Admin0!="KAZ")
+
+TBEV.with.Admin2.unknown.Russia.China.Kazakhstan.sum = TBEV.with.Admin2.unknown.Russia.China.Kazakhstan %>% group_by(Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+
+TBEV.with.Admin1.unknown.Rest.sum = TBEV.with.Admin1.unknown.Rest %>% group_by(Admin0,Admin1) %>% summarise(N=length(name))
+
+
+
+
+
+```
+
+
+```{r}
+#Number of Admin absence for each subtype
+#Russia China Kazakhstan
+TBEV.with.Admin2.Russia.China.Kazakhstan <- rbind(TBEV.with.Admin2.Eur.Russia.China.Kazakhstan,TBEV.with.Admin2.Sib.Russia.China.Kazakhstan,TBEV.with.Admin2.FE.Russia.China.Kazakhstan,TBEV.with.Admin2.Bal.Russia.China.Kazakhstan,TBEV.with.Admin2.unknown.Russia.China.Kazakhstan)
+
+
+
+# Sélectionner les polygones Admin 2 où au moins un sous-type est présent
+polygones_present_RCK <- RCK$Admin2
+
+# Initialiser une liste pour stocker les pseudo-absences pour chaque sous-type
+pseudo_absences_RCK <- list()
+
+# Pour chaque polygone où au moins un sous-type est présent
+for (admin2 in polygones_present_RCK) {
+  # Vérifier l'absence de chaque sous-type
+  for (Subtype in c("Eur", "Sib", "FE", "Bal", "unknown")) {
+    # Si le sous-type n'est pas présent dans ce polygone
+    if (!Subtype %in% TBEV.with.Admin2.Russia.China.Kazakhstan$subtype[TBEV.with.Admin2.Russia.China.Kazakhstan$Admin2 == admin2]) {
+      # Ajouter ce polygone à la liste des pseudo-absences pour ce sous-type
+      pseudo_absences_RCK[[Subtype]] <- c(pseudo_absences_RCK[[Subtype]], admin2)
+    }
+  }
+}
+
+pseudo_absences_RCK_Eur <- length(pseudo_absences_RCK[["Eur"]])
+pseudo_absences_RCK_Sib <- length(pseudo_absences_RCK[["Sib"]])
+pseudo_absences_RCK_FE <- length(pseudo_absences_RCK[["FE"]])
+pseudo_absences_RCK_Bal <- length(pseudo_absences_RCK[["Bal"]])
+pseudo_absences_RCK_unknown <- length(pseudo_absences_RCK[["unknown"]])
+
+
+# Rest of the countries
+TBEV.with.Admin1.Rest <- rbind(TBEV.with.Admin1.Eur.Rest,TBEV.with.Admin1.Sib.Rest,TBEV.with.Admin1.FE.Rest,TBEV.with.Admin1.Bal.Rest,TBEV.with.Admin1.unknown.Rest)
+
+# Sélectionner les polygones Admin 1 où au moins un sous-type est présent
+polygones_present_Rest <- Rest$Admin1
+
+# Initialiser une liste pour stocker les pseudo-absences pour chaque sous-type
+pseudo_absences_Rest <- list()
+
+# Pour chaque polygone où au moins un sous-type est présent
+for (admin1 in polygones_present_Rest) {
+  #   l'absence de chaque sous-type
+  for (Subtype in c("Eur", "Sib", "FE", "Bal", "unknown")) {
+    # Si le sous-type n'est pas présent dans ce polygone
+    if (!Subtype %in% TBEV.with.Admin1.Rest$subtype[TBEV.with.Admin1.Rest$Admin1 == admin1]) {
+      # Ajouter ce polygone à la liste des pseudo-absences pour ce sous-type
+      pseudo_absences_Rest[[Subtype]] <- c(pseudo_absences_Rest[[Subtype]], admin1)
+    }
+  }
+}
+
+pseudo_absences_Rest_Eur <- length(pseudo_absences_Rest[["Eur"]])
+pseudo_absences_Rest_Sib <- length(pseudo_absences_Rest[["Sib"]])
+pseudo_absences_Rest_FE <- length(pseudo_absences_Rest[["FE"]])
+pseudo_absences_Rest_Bal <- length(pseudo_absences_Rest[["Bal"]])
+pseudo_absences_Rest_unknown <- length(pseudo_absences_Rest[["unknown"]])
+
+
+
+
+```
+
+```{r}
+
+tot <- c(TBEV.with.Admin2.Russia.China.Kazakhstan$Admin2,TBEV.with.Admin1.Rest$Admin1)
+
+tot2 <- c(GADM.Admin2.RCK@data$NAME_2, GADM.Admin1.Rest@data$NAME_1)
+
+tous_present <- all(tot %in% tot2)
+
+diff<- setdiff(tot,tot2)
+
+
+```
+
+
+#Number of Admin absence for each subtype with no unknown subtype
+
+```{r}
+#Russia China Kazakhstan
+list_Admin2_RCK_unknown <- TBEV.with.Admin2.Russia.China.Kazakhstan %>% filter(subtype=="unknown") 
+
+list_Admin2_RCK_unknown <- list_Admin2_RCK_unknown$Admin2
+
+TBEV.with.Admin2.Russia.China.Kazakhstan.no.unknown <- subset(TBEV.with.Admin2.Russia.China.Kazakhstan, !(Admin2 %in% list_Admin2_RCK_unknown))
+
+
+# Sélectionner les polygones Admin 2 où au moins un sous-type est présent
+polygones_present_RCK_no.unknown <- TBEV.with.Admin2.Russia.China.Kazakhstan.no.unknown %>% group_by(Admin0,Admin1,Admin2) %>% summarise(N=length(name))
+
+polygones_present_RCK_no.unknown <- polygones_present_RCK_no.unknown$Admin2
+
+
+# Initialiser une liste pour stocker les pseudo-absences pour chaque sous-type
+pseudo_absences_RCK_no.unknown <- list()
+
+# Pour chaque polygone où au moins un sous-type est présent
+for (admin2 in polygones_present_RCK_no.unknown) {
+  # Vérifier l'absence de chaque sous-type
+  for (Subtype in c("Eur", "Sib", "FE", "Bal","unknown")) {
+    # Si le sous-type n'est pas présent dans ce polygone
+    if (!Subtype %in% TBEV.with.Admin2.Russia.China.Kazakhstan.no.unknown$subtype[TBEV.with.Admin2.Russia.China.Kazakhstan.no.unknown$Admin2 == admin2]) {
+      # Ajouter ce polygone à la liste des pseudo-absences pour ce sous-type
+      pseudo_absences_RCK_no.unknown[[Subtype]] <- c(pseudo_absences_RCK_no.unknown[[Subtype]], admin2)
+    }
+  }
+}
+
+pseudo_absences_RCK_no.unknown_Eur <- length(pseudo_absences_RCK_no.unknown[["Eur"]])
+pseudo_absences_RCK_no.unknown_Sib <- length(pseudo_absences_RCK_no.unknown[["Sib"]])
+pseudo_absences_RCK_no.unknown_FE <- length(pseudo_absences_RCK_no.unknown[["FE"]])
+pseudo_absences_RCK_no.unknown_Bal <- length(pseudo_absences_RCK_no.unknown[["Bal"]])
+pseudo_absences_RCK_no.unknown_unknown <- length(pseudo_absences_RCK_no.unknown[["unknown"]])
+
+
+
+list_Admin1_Rest_unknown <- TBEV.with.Admin1.Rest %>% filter(subtype=="unknown")
+
+list_Admin1_Rest_unknown <- list_Admin1_Rest_unknown$Admin1
+
+TBEV.with.Admin1.Rest.no.unknown <- subset(TBEV.with.Admin1.Rest, !(Admin1 %in% list_Admin1_Rest_unknown))
+
+
+# Sélectionner les polygones Admin 1 où au moins un sous-type est présent
+polygones_present_Rest_no.unknown <- TBEV.with.Admin1.Rest.no.unknown %>% group_by(Admin0,Admin1) %>% summarise(N=length(name))
+
+polygones_present_Rest_no.unknown <- polygones_present_Rest_no.unknown$Admin1
+
+# Initialiser une liste pour stocker les pseudo-absences pour chaque sous-type
+pseudo_absences_Rest_no.unknown <- list()
+
+# Pour chaque polygone où au moins un sous-type est présent
+for (admin1 in polygones_present_Rest_no.unknown) {
+  # Vérifier l'absence de chaque sous-type
+  for (Subtype in c("Eur", "Sib", "FE", "Bal","unknown")) {
+    # Si le sous-type n'est pas présent dans ce polygone
+    if (!Subtype %in% TBEV.with.Admin1.Rest.no.unknown$subtype[TBEV.with.Admin1.Rest.no.unknown$Admin1 == admin1]) {
+      # Ajouter ce polygone à la liste des pseudo-absences pour ce sous-type
+      pseudo_absences_Rest_no.unknown[[Subtype]] <- c(pseudo_absences_Rest_no.unknown[[Subtype]], admin1)
+    }
+  }
+}
+
+pseudo_absences_Rest_no.unknown_Eur <- length(pseudo_absences_Rest_no.unknown[["Eur"]])
+pseudo_absences_Rest_no.unknown_Sib <- length(pseudo_absences_Rest_no.unknown[["Sib"]])
+pseudo_absences_Rest_no.unknown_FE <- length(pseudo_absences_Rest_no.unknown[["FE"]])
+pseudo_absences_Rest_no.unknown_Bal <- length(pseudo_absences_Rest_no.unknown[["Bal"]])
+pseudo_absences_Rest_no.unknown_unknown <- length(pseudo_absences_Rest_no.unknown[["unknown"]])
+
+
+
+```
+
+
+
+#Number of admin units per subtype for admin 2 in Russia, China and Kazakhstan and admin 1 in the rest of the countries dataframe 
+
+
+```{r}
+
+
+c1=c("Eur","Sib","FE","Bal","unknown")
+c2=c(nrow(TBEV.with.Admin2.Eur.Russia.China.Kazakhstan.sum)+nrow(TBEV.with.Admin1.Eur.Rest.sum),nrow(TBEV.with.Admin2.Sib.Russia.China.Kazakhstan.sum)+nrow(TBEV.with.Admin1.Sib.Rest.sum),nrow(TBEV.with.Admin2.FE.Russia.China.Kazakhstan.sum)+nrow(TBEV.with.Admin1.FE.Rest.sum),nrow(TBEV.with.Admin2.Bal.Russia.China.Kazakhstan.sum)+nrow(TBEV.with.Admin1.Bal.Rest.sum),nrow(TBEV.with.Admin2.unknown.Russia.China.Kazakhstan.sum)+nrow(TBEV.with.Admin1.unknown.Rest.sum))
+
+c3=c(pseudo_absences_RCK_Eur+pseudo_absences_Rest_Eur,pseudo_absences_RCK_Sib+pseudo_absences_Rest_Sib,pseudo_absences_RCK_FE+pseudo_absences_Rest_FE,pseudo_absences_RCK_Bal+pseudo_absences_Rest_Bal,pseudo_absences_RCK_unknown+pseudo_absences_Rest_unknown)
+
+c4=c(pseudo_absences_RCK_no.unknown_Eur+pseudo_absences_Rest_no.unknown_Eur,pseudo_absences_RCK_no.unknown_Sib+pseudo_absences_Rest_no.unknown_Sib,pseudo_absences_RCK_no.unknown_FE+pseudo_absences_Rest_no.unknown_FE,pseudo_absences_RCK_no.unknown_Bal+pseudo_absences_Rest_no.unknown_Bal, pseudo_absences_RCK_no.unknown_unknown+pseudo_absences_Rest_no.unknown_unknown)
+
+# Create the dataframe
+pseudo_absences_dataframe <- data.frame(
+  column1 = c1,
+  column2 = c2,
+  column3 = c3,
+  column4 = c4
+)
+
+# Remove the index
+rownames(pseudo_absences_dataframe) <- NULL
+colnames(pseudo_absences_dataframe) <- c("subtype","Presence","Absence","Absence of subtype and no unknown")
+
+
+
+
+```
+
+
+
+##Calculation of TBEV sequences available only at each Admin unit
+
+<!--```{r TBEV samples only at each Admin unit, warning=FALSE}
+
+TBEV_onlyAdmin0=TBEV.isolates %>% filter(is.na(Admin0)==F,is.na(Admin1)==T,is.na(Admin2)==T,is.na(Admin3)==T, is.na(Admin4)==T, is.na(Admin5)==T) #regions with only Admin0
+TBEV_onlyAdmin1=TBEV.isolates %>% filter(is.na(Admin1)==F,is.na(Admin2)==T,is.na(Admin3)==T,is.na(Admin4)==T, is.na(Admin5)==T) #regions with only Admin 1
+TBEV_onlyAdmin2=TBEV.isolates %>% filter(is.na(Admin2)==F,is.na(Admin3)==T, is.na(Admin4)==T, is.na(Admin5)==T) # #regions with only Admin 2
+TBEV_onlyAdmin3=TBEV.isolates %>% filter(is.na(Admin3)==F,is.na(Admin4)==T, is.na(Admin5)==T) #regions with only Admin 3
+TBEV_onlyAdmin4=TBEV.isolates %>% filter(is.na(Admin4)==F,is.na(Admin5)==T) #regions with only Admin 4
+
+TBEV_onlyAdmin0_sum=TBEV_onlyAdmin0 %>% group_by(Country,Admin0) %>% summarise(N=length(name)) #Sum of #regions with only Admin0
+TBEV_onlyAdmin1_sum=TBEV_onlyAdmin1 %>% group_by(Country,Admin0,Admin1) %>% summarise(N=length(name)) #Sum of #regions with only Admin1
+TBEV_onlyAdmin2_sum=TBEV_onlyAdmin2 %>% group_by(Country,Admin0,Admin1,Admin2) %>% summarise(N=length(name)) # Sum of regions with only Admin2
+TBEV_onlyAdmin3_sum=TBEV_onlyAdmin3 %>% group_by(Country,Admin0,Admin1,Admin2,Admin3) %>% summarise(N=length(name)) #Sum of regions with only Admin3
+TBEV_onlyAdmin4_sum=TBEV_onlyAdmin4 %>% group_by(Country,Admin0,Admin1,Admin2,Admin3,Admin4) %>% summarise(N=length(name)) #Sum of #regions with only Admin4
+
+
+print("Total of TBEV sequences per Admin unit, only available at each Admin unit")
+
+print(paste("Number of sequences with ONLY Admin 0 : ",nrow(TBEV_onlyAdmin0)))
+print(paste("Number of sequences with ONLY Admin 1 : ",nrow(TBEV_onlyAdmin1)))
+print(paste("Number of sequences with ONLY Admin 2 : ",nrow(TBEV_onlyAdmin2)))
+print(paste("Number of sequences with ONLY Admin 3 : ",nrow(TBEV_onlyAdmin3)))
+print(paste("Number of sequences with ONLY Admin 4 : ",nrow(TBEV_onlyAdmin4)))
+
+print(paste("Number of ONLY Admin 0 : ",nrow(TBEV_onlyAdmin0_sum)))
+print(paste("Number of ONLY Admin 1 : ",nrow(TBEV_onlyAdmin1_sum)))
+print(paste("Number of ONLY Admin 2 : ",nrow(TBEV_onlyAdmin2_sum)))
+print(paste("Number of ONLY Admin 3 : ",nrow(TBEV_onlyAdmin3_sum)))
+print(paste("Number of ONLY Admin 4 : ",nrow(TBEV_onlyAdmin4_sum)))
+
+
+
+```-->
+
+```{r}
+#Replacing Baltic subtype by Siberian subtype
+TBEV.isolates <- TBEV.isolates %>%
+  mutate(subtype = case_when(
+    subtype == "3 (Siberian Subtype)" ~ "Sib",
+    subtype == "1 (European Subtype)" ~ "Eur",
+    subtype == "Bal" ~ "Sib",
+    subtype == "2 (Far Eastern Subtype)" ~ "FE",
+    TRUE ~ subtype  # Pour garder les autres valeurs inchangées
+  ))
+```
+
+
+
+##Histogram of number of TBEV sequences/year 
+
+
+```{r}
+
+
+# Extract the first four characters of the collection_date_fixed column and store them in the year column
+TBEV.isolates$year <- substr(TBEV.isolates$collection_date_fixed, 1, 4)
+
+# Convert the year column from character to numeric
+TBEV.isolates$year <- as.numeric(TBEV.isolates$year)
+
+# Extraction of unique years
+unique_years <- unique(TBEV.isolates$year)
+
+# Count number of unique years
+num_years <- length(unique_years)
+#num_years <- max(unique_years, na.rm = TRUE)-min(unique_years, na.rm = TRUE)
+# Create a histogram with a bar for each year
+hist(x = TBEV.isolates$year, breaks = num_years, main = "Number of sequences per year", xlab = "Year", ylab = "Number of sequences", col = "lightblue")
+
+
+#TBEV.isolates sorted by year and subtype (used for verification)
+TBEV.isolates_by_dates <- TBEV.isolates %>%   group_by(subtype,year)  %>%   summarize(Count = n())
+
+```
+
+##Histogram of number of TBEV sequences/year by subtype
+
+
+
+```{r}
+
+TBEV.isolates.subtypes_liste <- split(TBEV.isolates, TBEV.isolates$subtype)
+
+TBEV.isolates_Eur <- TBEV.isolates.subtypes_liste$Eur
+TBEV.isolates_Sib <- TBEV.isolates.subtypes_liste$Sib
+TBEV.isolates_FE <- TBEV.isolates.subtypes_liste$FE
+TBEV.isolates_unknown <- TBEV.isolates.subtypes_liste$unknown
+
+print(paste("Number of Eur Sequences :",nrow(TBEV.isolates_Eur)))
+print(paste("Number of Sib Sequences :",nrow(TBEV.isolates_Sib)))
+print(paste("Number of FE Sequences :",nrow(TBEV.isolates_FE)))
+print(paste("Number of unknown Sequences :",nrow(TBEV.isolates_unknown)))
+
+
+#Eur
+# Extraction of unique years
+unique_years_Eur <- unique(TBEV.isolates_Eur$year)
+# Count number of unique years
+num_years_Eur <- length(unique_years_Eur)
+# Create a histogram with a bar for each year
+hist(x = TBEV.isolates_Eur$year, breaks = num_years_Eur, main = "Number of sequences per year Eur", xlab = "Year", ylab = "Number of sequences", col = "red3")
+
+#Sib
+# Extraction of unique years
+unique_years_Sib <- unique(TBEV.isolates_Sib$year)
+# Count number of unique years
+num_years_Sib <- length(unique_years_Sib)
+# Create a histogram with a bar for each year
+hist(x = TBEV.isolates_Sib$year, breaks = num_years_Sib, main = "Number of sequences per year Sib", xlab = "Year", ylab = "Number of sequences", col = "green3")
+
+#FE
+# Extraction of unique years
+unique_years_FE <- unique(TBEV.isolates_FE$year)
+# Count number of unique years
+num_years_FE <- length(unique_years_FE)
+# Create a histogram with a bar for each year
+hist(x = TBEV.isolates_FE$year, breaks = num_years_FE, main = "Number of sequences per year FE", xlab = "Year", ylab = "Number of sequences", col = "blue3")
+
+#Unknown
+# Extraction of unique years
+unique_years_unknown <- unique(TBEV.isolates_unknown$year)
+# Count number of unique years
+num_years_unknown <- length(unique_years_unknown)
+# Create a histogram with a bar for each year
+hist(x = TBEV.isolates_unknown$year, breaks = num_years_unknown, main = "Number of sequences per year unknown", xlab = "Year", ylab = "Number of sequences", col = "orange3")
+```
+
+
+##Determination of which Admin to use for Russia, China and the rest of the countries
+
+
+```{r}
+#Russia
+TBEV.Admin0.Russia <- TBEV.with.Admin0 %>% filter(Country=="Russia")
+Russia.sum.Admin0 <- summarise(TBEV.Admin0.Russia, N=length(name))
+Russia.sum.Admin0 <- sum(Russia.sum.Admin0$N)
+TBEV.Admin1.Russia <- TBEV.with.Admin1 %>% filter(Country=="Russia")
+Russia.sum.Admin1 <- summarise(TBEV.Admin1.Russia, N=length(name))
+Russia.sum.Admin1 <- sum(Russia.sum.Admin1$N)
+TBEV.Admin2.Russia <- TBEV.with.Admin2 %>% filter(Country=="Russia")
+Russia.sum.Admin2 <- summarise(TBEV.Admin2.Russia, N=length(name))
+Russia.sum.Admin2 <- sum(Russia.sum.Admin2$N)
+TBEV.Admin3.Russia <- TBEV.with.Admin3 %>% filter(Country=="Russia")
+Russia.sum.Admin3 <- summarise(TBEV.Admin3.Russia, N=length(name))
+Russia.sum.Admin3 <- sum(Russia.sum.Admin3$N)
+TBEV.Admin4.Russia <- TBEV.with.Admin4 %>% filter(Country=="Russia")
+Russia.sum.Admin4 <- summarise(TBEV.Admin4.Russia, N=length(name))
+Russia.sum.Admin4 <- sum(Russia.sum.Admin4$N)
+
+#China
+TBEV.Admin0.China <- TBEV.with.Admin0 %>% filter(Country=="China")
+China.sum.Admin0 <- summarise(TBEV.Admin0.China, N=length(name))
+China.sum.Admin0 <- sum(China.sum.Admin0$N)
+TBEV.Admin1.China <- TBEV.with.Admin1 %>% filter(Country=="China")
+China.sum.Admin1 <- summarise(TBEV.Admin1.China, N=length(name))
+China.sum.Admin1 <- sum(China.sum.Admin1$N)
+TBEV.Admin2.China <- TBEV.with.Admin2 %>% filter(Country=="China")
+China.sum.Admin2 <- summarise(TBEV.Admin2.China, N=length(name))
+China.sum.Admin2 <- sum(China.sum.Admin2$N)
+TBEV.Admin3.China <- TBEV.with.Admin3 %>% filter(Country=="China")
+China.sum.Admin3 <- summarise(TBEV.Admin3.China, N=length(name))
+China.sum.Admin3 <- sum(China.sum.Admin3$N)
+TBEV.Admin4.China <- TBEV.with.Admin4 %>% filter(Country=="China")
+China.sum.Admin4 <- summarise(TBEV.Admin4.China, N=length(name))
+China.sum.Admin4 <- sum(China.sum.Admin4$N)
+
+#Rest of the countries
+TBEV.Admin0.Rest <- TBEV.with.Admin0 %>% filter(Country!="Russia",Country!="China")
+Rest.sum.Admin0 <- summarise(TBEV.Admin0.Rest, N=length(name))
+Rest.sum.Admin0 <- sum(Rest.sum.Admin0$N)
+TBEV.Admin1.Rest <- TBEV.with.Admin1 %>% filter(Country!="Russia",Country!="China")
+Rest.sum.Admin1 <- summarise(TBEV.Admin1.Rest, N=length(name))
+Rest.sum.Admin1 <- sum(Rest.sum.Admin1$N)
+TBEV.Admin2.Rest <- TBEV.with.Admin2 %>% filter(Country!="Russia",Country!="China")
+Rest.sum.Admin2 <- summarise(TBEV.Admin2.Rest, N=length(name))
+Rest.sum.Admin2 <- sum(Rest.sum.Admin2$N)
+TBEV.Admin3.Rest <- TBEV.with.Admin3 %>% filter(Country!="Russia",Country!="China")
+Rest.sum.Admin3 <- summarise(TBEV.Admin3.Rest, N=length(name))
+Rest.sum.Admin3 <- sum(Rest.sum.Admin3$N)
+TBEV.Admin4.Rest <- TBEV.with.Admin4 %>% filter(Country!="Russia",Country!="China")
+Rest.sum.Admin4 <- summarise(TBEV.Admin4.Rest, N=length(name))
+Rest.sum.Admin4 <- sum(Rest.sum.Admin4$N)
+
+
+#same but for each subtype
+
+#Russia
+#Eur
+TBEV.Admin0.Russia.Eur <- TBEV.with.Admin0 %>% filter(Country=="Russia",subtype=="Eur")
+Russia.sum.Admin0.Eur <- summarise(TBEV.Admin0.Russia.Eur, N=length(name))
+Russia.sum.Admin0.Eur <- sum(Russia.sum.Admin0.Eur$N)
+TBEV.Admin1.Russia.Eur <- TBEV.with.Admin1 %>% filter(Country=="Russia",subtype=="Eur")
+Russia.sum.Admin1.Eur <- summarise(TBEV.Admin1.Russia.Eur, N=length(name))
+Russia.sum.Admin1.Eur <- sum(Russia.sum.Admin1.Eur$N)
+TBEV.Admin2.Russia.Eur <- TBEV.with.Admin2 %>% filter(Country=="Russia",subtype=="Eur")
+Russia.sum.Admin2.Eur <- summarise(TBEV.Admin2.Russia.Eur, N=length(name))
+Russia.sum.Admin2.Eur <- sum(Russia.sum.Admin2.Eur$N)
+TBEV.Admin3.Russia.Eur <- TBEV.with.Admin3 %>% filter(Country=="Russia",subtype=="Eur")
+Russia.sum.Admin3.Eur <- summarise(TBEV.Admin3.Russia.Eur, N=length(name))
+Russia.sum.Admin3.Eur <- sum(Russia.sum.Admin3.Eur$N)
+TBEV.Admin4.Russia.Eur <- TBEV.with.Admin4 %>% filter(Country=="Russia",subtype=="Eur")
+Russia.sum.Admin4.Eur <- summarise(TBEV.Admin4.Russia.Eur, N=length(name))
+Russia.sum.Admin4.Eur <- sum(Russia.sum.Admin4.Eur$N)
+
+#Sib
+TBEV.Admin0.Russia.Sib <- TBEV.with.Admin0 %>% filter(Country=="Russia",subtype=="Sib")
+Russia.sum.Admin0.Sib <- summarise(TBEV.Admin0.Russia.Sib, N=length(name))
+Russia.sum.Admin0.Sib <- sum(Russia.sum.Admin0.Sib$N)
+TBEV.Admin1.Russia.Sib <- TBEV.with.Admin1 %>% filter(Country=="Russia",subtype=="Sib")
+Russia.sum.Admin1.Sib <- summarise(TBEV.Admin1.Russia.Sib, N=length(name))
+Russia.sum.Admin1.Sib <- sum(Russia.sum.Admin1.Sib$N)
+TBEV.Admin2.Russia.Sib <- TBEV.with.Admin2 %>% filter(Country=="Russia",subtype=="Sib")
+Russia.sum.Admin2.Sib <- summarise(TBEV.Admin2.Russia.Sib, N=length(name))
+Russia.sum.Admin2.Sib <- sum(Russia.sum.Admin2.Sib$N)
+TBEV.Admin3.Russia.Sib <- TBEV.with.Admin3 %>% filter(Country=="Russia",subtype=="Sib")
+Russia.sum.Admin3.Sib <- summarise(TBEV.Admin3.Russia.Sib, N=length(name))
+Russia.sum.Admin3.Sib <- sum(Russia.sum.Admin3.Sib$N)
+TBEV.Admin4.Russia.Sib <- TBEV.with.Admin4 %>% filter(Country=="Russia",subtype=="Sib")
+Russia.sum.Admin4.Sib <- summarise(TBEV.Admin4.Russia.Sib, N=length(name))
+Russia.sum.Admin4.Sib <- sum(Russia.sum.Admin4.Sib$N)
+
+#FE
+TBEV.Admin0.Russia.FE <- TBEV.with.Admin0 %>% filter(Country=="Russia",subtype=="FE")
+Russia.sum.Admin0.FE <- summarise(TBEV.Admin0.Russia.FE, N=length(name))
+Russia.sum.Admin0.FE <- sum(Russia.sum.Admin0.FE$N)
+TBEV.Admin1.Russia.FE <- TBEV.with.Admin1 %>% filter(Country=="Russia",subtype=="FE")
+Russia.sum.Admin1.FE <- summarise(TBEV.Admin1.Russia.FE, N=length(name))
+Russia.sum.Admin1.FE <- sum(Russia.sum.Admin1.FE$N)
+TBEV.Admin2.Russia.FE <- TBEV.with.Admin2 %>% filter(Country=="Russia",subtype=="FE")
+Russia.sum.Admin2.FE <- summarise(TBEV.Admin2.Russia.FE, N=length(name))
+Russia.sum.Admin2.FE <- sum(Russia.sum.Admin2.FE$N)
+TBEV.Admin3.Russia.FE <- TBEV.with.Admin3 %>% filter(Country=="Russia",subtype=="FE")
+Russia.sum.Admin3.FE <- summarise(TBEV.Admin3.Russia.FE, N=length(name))
+Russia.sum.Admin3.FE <- sum(Russia.sum.Admin3.FE$N)
+TBEV.Admin4.Russia.FE <- TBEV.with.Admin4 %>% filter(Country=="Russia",subtype=="FE")
+Russia.sum.Admin4.FE <- summarise(TBEV.Admin4.Russia.FE, N=length(name))
+Russia.sum.Admin4.FE <- sum(Russia.sum.Admin4.FE$N)
+
+#Unknown
+TBEV.Admin0.Russia.unknown <- TBEV.with.Admin0 %>% filter(Country=="Russia",subtype=="unknown")
+Russia.sum.Admin0.unknown <- summarise(TBEV.Admin0.Russia.unknown, N=length(name))
+Russia.sum.Admin0.unknown <- sum(Russia.sum.Admin0.unknown$N)
+TBEV.Admin1.Russia.unknown <- TBEV.with.Admin1 %>% filter(Country=="Russia",subtype=="unknown")
+Russia.sum.Admin1.unknown <- summarise(TBEV.Admin1.Russia.unknown, N=length(name))
+Russia.sum.Admin1.unknown <- sum(Russia.sum.Admin1.unknown$N)
+TBEV.Admin2.Russia.unknown <- TBEV.with.Admin2 %>% filter(Country=="Russia",subtype=="unknown")
+Russia.sum.Admin2.unknown <- summarise(TBEV.Admin2.Russia.unknown, N=length(name))
+Russia.sum.Admin2.unknown <- sum(Russia.sum.Admin2.unknown$N)
+TBEV.Admin3.Russia.unknown <- TBEV.with.Admin3 %>% filter(Country=="Russia",subtype=="unknown")
+Russia.sum.Admin3.unknown <- summarise(TBEV.Admin3.Russia.unknown, N=length(name))
+Russia.sum.Admin3.unknown <- sum(Russia.sum.Admin3.unknown$N)
+TBEV.Admin4.Russia.unknown <- TBEV.with.Admin4 %>% filter(Country=="Russia",subtype=="unknown")
+Russia.sum.Admin4.unknown <- summarise(TBEV.Admin4.Russia.unknown, N=length(name))
+Russia.sum.Admin4.unknown <- sum(Russia.sum.Admin4.unknown$N)
+
+#China
+#Eur
+TBEV.Admin0.China.Eur <- TBEV.with.Admin0 %>% filter(Country=="China",subtype=="Eur")
+China.sum.Admin0.Eur <- summarise(TBEV.Admin0.China.Eur, N=length(name))
+China.sum.Admin0.Eur <- sum(China.sum.Admin0.Eur$N)
+TBEV.Admin1.China.Eur <- TBEV.with.Admin1 %>% filter(Country=="China",subtype=="Eur")
+China.sum.Admin1.Eur <- summarise(TBEV.Admin1.China.Eur, N=length(name))
+China.sum.Admin1.Eur <- sum(China.sum.Admin1.Eur$N)
+TBEV.Admin2.China.Eur <- TBEV.with.Admin2 %>% filter(Country=="China",subtype=="Eur")
+China.sum.Admin2.Eur <- summarise(TBEV.Admin2.China.Eur, N=length(name))
+China.sum.Admin2.Eur <- sum(China.sum.Admin2.Eur$N)
+TBEV.Admin3.China.Eur <- TBEV.with.Admin3 %>% filter(Country=="China",subtype=="Eur")
+China.sum.Admin3.Eur <- summarise(TBEV.Admin3.China.Eur, N=length(name))
+China.sum.Admin3.Eur <- sum(China.sum.Admin3.Eur$N)
+TBEV.Admin4.China.Eur <- TBEV.with.Admin4 %>% filter(Country=="China",subtype=="Eur")
+China.sum.Admin4.Eur <- summarise(TBEV.Admin4.China.Eur, N=length(name))
+China.sum.Admin4.Eur <- sum(China.sum.Admin4.Eur$N)
+
+#Sib
+TBEV.Admin0.China.Sib <- TBEV.with.Admin0 %>% filter(Country=="China",subtype=="Sib")
+China.sum.Admin0.Sib <- summarise(TBEV.Admin0.China.Sib, N=length(name))
+China.sum.Admin0.Sib <- sum(China.sum.Admin0.Sib$N)
+TBEV.Admin1.China.Sib <- TBEV.with.Admin1 %>% filter(Country=="China",subtype=="Sib")
+China.sum.Admin1.Sib <- summarise(TBEV.Admin1.China.Sib, N=length(name))
+China.sum.Admin1.Sib <- sum(China.sum.Admin1.Sib$N)
+TBEV.Admin2.China.Sib <- TBEV.with.Admin2 %>% filter(Country=="China",subtype=="Sib")
+China.sum.Admin2.Sib <- summarise(TBEV.Admin2.China.Sib, N=length(name))
+China.sum.Admin2.Sib <- sum(China.sum.Admin2.Sib$N)
+TBEV.Admin3.China.Sib <- TBEV.with.Admin3 %>% filter(Country=="China",subtype=="Sib")
+China.sum.Admin3.Sib <- summarise(TBEV.Admin3.China.Sib, N=length(name))
+China.sum.Admin3.Sib <- sum(China.sum.Admin3.Sib$N)
+TBEV.Admin4.China.Sib <- TBEV.with.Admin4 %>% filter(Country=="China",subtype=="Sib")
+China.sum.Admin4.Sib <- summarise(TBEV.Admin4.China.Sib, N=length(name))
+China.sum.Admin4.Sib <- sum(China.sum.Admin4.Sib$N)
+
+#FE
+TBEV.Admin0.China.FE <- TBEV.with.Admin0 %>% filter(Country=="China",subtype=="FE")
+China.sum.Admin0.FE <- summarise(TBEV.Admin0.China.FE, N=length(name))
+China.sum.Admin0.FE <- sum(China.sum.Admin0.FE$N)
+TBEV.Admin1.China.FE <- TBEV.with.Admin1 %>% filter(Country=="China",subtype=="FE")
+China.sum.Admin1.FE <- summarise(TBEV.Admin1.China.FE, N=length(name))
+China.sum.Admin1.FE <- sum(China.sum.Admin1.FE$N)
+TBEV.Admin2.China.FE <- TBEV.with.Admin2 %>% filter(Country=="China",subtype=="FE")
+China.sum.Admin2.FE <- summarise(TBEV.Admin2.China.FE, N=length(name))
+China.sum.Admin2.FE <- sum(China.sum.Admin2.FE$N)
+TBEV.Admin3.China.FE <- TBEV.with.Admin3 %>% filter(Country=="China",subtype=="FE")
+China.sum.Admin3.FE <- summarise(TBEV.Admin3.China.FE, N=length(name))
+China.sum.Admin3.FE <- sum(China.sum.Admin3.FE$N)
+TBEV.Admin4.China.FE <- TBEV.with.Admin4 %>% filter(Country=="China",subtype=="FE")
+China.sum.Admin4.FE <- summarise(TBEV.Admin4.China.FE, N=length(name))
+China.sum.Admin4.FE <- sum(China.sum.Admin4.FE$N)
+
+#Unknown
+TBEV.Admin0.China.unknown <- TBEV.with.Admin0 %>% filter(Country=="China",subtype=="unknown")
+China.sum.Admin0.unknown <- summarise(TBEV.Admin0.China.unknown, N=length(name))
+China.sum.Admin0.unknown <- sum(China.sum.Admin0.unknown$N)
+TBEV.Admin1.China.unknown <- TBEV.with.Admin1 %>% filter(Country=="China",subtype=="unknown")
+China.sum.Admin1.unknown <- summarise(TBEV.Admin1.China.unknown, N=length(name))
+China.sum.Admin1.unknown <- sum(China.sum.Admin1.unknown$N)
+TBEV.Admin2.China.unknown <- TBEV.with.Admin2 %>% filter(Country=="China",subtype=="unknown")
+China.sum.Admin2.unknown <- summarise(TBEV.Admin2.China.unknown, N=length(name))
+China.sum.Admin2.unknown <- sum(China.sum.Admin2.unknown$N)
+TBEV.Admin3.China.unknown <- TBEV.with.Admin3 %>% filter(Country=="China",subtype=="unknown")
+China.sum.Admin3.unknown <- summarise(TBEV.Admin3.China.unknown, N=length(name))
+China.sum.Admin3.unknown <- sum(China.sum.Admin3.unknown$N)
+TBEV.Admin4.China.unknown <- TBEV.with.Admin4 %>% filter(Country=="China",subtype=="unknown")
+China.sum.Admin4.unknown <- summarise(TBEV.Admin4.China.unknown, N=length(name))
+China.sum.Admin4.unknown <- sum(China.sum.Admin4.unknown$N)
+
+#Rest of the countries
+#Eur
+TBEV.Admin0.Rest.Eur <- TBEV.with.Admin0 %>% filter(Country!="Russia",Country!="China",subtype=="Eur")
+Rest.sum.Admin0.Eur <- summarise(TBEV.Admin0.Rest.Eur, N=length(name))
+Rest.sum.Admin0.Eur <- sum(Rest.sum.Admin0.Eur$N)
+TBEV.Admin1.Rest.Eur <- TBEV.with.Admin1 %>% filter(Country!="Russia",Country!="China",subtype=="Eur")
+Rest.sum.Admin1.Eur <- summarise(TBEV.Admin1.Rest.Eur, N=length(name))
+Rest.sum.Admin1.Eur <- sum(Rest.sum.Admin1.Eur$N)
+TBEV.Admin2.Rest.Eur <- TBEV.with.Admin2 %>% filter(Country!="Russia",Country!="China",subtype=="Eur")
+Rest.sum.Admin2.Eur <- summarise(TBEV.Admin2.Rest.Eur, N=length(name))
+Rest.sum.Admin2.Eur <- sum(Rest.sum.Admin2.Eur$N)
+TBEV.Admin3.Rest.Eur <- TBEV.with.Admin3 %>% filter(Country!="Russia",Country!="China",subtype=="Eur")
+Rest.sum.Admin3.Eur <- summarise(TBEV.Admin3.Rest.Eur, N=length(name))
+Rest.sum.Admin3.Eur <- sum(Rest.sum.Admin3.Eur$N)
+TBEV.Admin4.Rest.Eur <- TBEV.with.Admin4 %>% filter(Country!="Russia",Country!="China",subtype=="Eur")
+Rest.sum.Admin4.Eur <- summarise(TBEV.Admin4.Rest.Eur, N=length(name))
+Rest.sum.Admin4.Eur <- sum(Rest.sum.Admin4.Eur$N)
+
+#Sib
+TBEV.Admin0.Rest.Sib <- TBEV.with.Admin0 %>% filter(Country!="Russia",Country!="China",subtype=="Sib")
+Rest.sum.Admin0.Sib <- summarise(TBEV.Admin0.Rest.Sib, N=length(name))
+Rest.sum.Admin0.Sib <- sum(Rest.sum.Admin0.Sib$N)
+TBEV.Admin1.Rest.Sib <- TBEV.with.Admin1 %>% filter(Country!="Russia",Country!="China",subtype=="Sib")
+Rest.sum.Admin1.Sib <- summarise(TBEV.Admin1.Rest.Sib, N=length(name))
+Rest.sum.Admin1.Sib <- sum(Rest.sum.Admin1.Sib$N)
+TBEV.Admin2.Rest.Sib <- TBEV.with.Admin2 %>% filter(Country!="Russia",Country!="China",subtype=="Sib")
+Rest.sum.Admin2.Sib <- summarise(TBEV.Admin2.Rest.Sib, N=length(name))
+Rest.sum.Admin2.Sib <- sum(Rest.sum.Admin2.Sib$N)
+TBEV.Admin3.Rest.Sib <- TBEV.with.Admin3 %>% filter(Country!="Russia",Country!="China",subtype=="Sib")
+Rest.sum.Admin3.Sib <- summarise(TBEV.Admin3.Rest.Sib, N=length(name))
+Rest.sum.Admin3.Sib <- sum(Rest.sum.Admin3.Sib$N)
+TBEV.Admin4.Rest.Sib <- TBEV.with.Admin4 %>% filter(Country!="Russia",Country!="China",subtype=="Sib")
+Rest.sum.Admin4.Sib <- summarise(TBEV.Admin4.Rest.Sib, N=length(name))
+Rest.sum.Admin4.Sib <- sum(Rest.sum.Admin4.Sib$N)
+
+#FE
+TBEV.Admin0.Rest.FE <- TBEV.with.Admin0 %>% filter(Country!="Russia",Country!="China",subtype=="FE")
+Rest.sum.Admin0.FE <- summarise(TBEV.Admin0.Rest.FE, N=length(name))
+Rest.sum.Admin0.FE <- sum(Rest.sum.Admin0.FE$N)
+TBEV.Admin1.Rest.FE <- TBEV.with.Admin1 %>% filter(Country!="Russia",Country!="China",subtype=="FE")
+Rest.sum.Admin1.FE <- summarise(TBEV.Admin1.Rest.FE, N=length(name))
+Rest.sum.Admin1.FE <- sum(Rest.sum.Admin1.FE$N)
+TBEV.Admin2.Rest.FE <- TBEV.with.Admin2 %>% filter(Country!="Russia",Country!="China",subtype=="FE")
+Rest.sum.Admin2.FE <- summarise(TBEV.Admin2.Rest.FE, N=length(name))
+Rest.sum.Admin2.FE <- sum(Rest.sum.Admin2.FE$N)
+TBEV.Admin3.Rest.FE <- TBEV.with.Admin3 %>% filter(Country!="Russia",Country!="China",subtype=="FE")
+Rest.sum.Admin3.FE <- summarise(TBEV.Admin3.Rest.FE, N=length(name))
+Rest.sum.Admin3.FE <- sum(Rest.sum.Admin3.FE$N)
+TBEV.Admin4.Rest.FE <- TBEV.with.Admin4 %>% filter(Country!="Russia",Country!="China",subtype=="FE")
+Rest.sum.Admin4.FE <- summarise(TBEV.Admin4.Rest.FE, N=length(name))
+Rest.sum.Admin4.FE <- sum(Rest.sum.Admin4.FE$N)
+
+#Unknown
+TBEV.Admin0.Rest.unknown <- TBEV.with.Admin0 %>% filter(Country!="Russia",Country!="China",subtype=="unknown")
+Rest.sum.Admin0.unknown <- summarise(TBEV.Admin0.Rest.unknown, N=length(name))
+Rest.sum.Admin0.unknown <- sum(Rest.sum.Admin0.unknown$N)
+TBEV.Admin1.Rest.unknown <- TBEV.with.Admin1 %>% filter(Country!="Russia",Country!="China",subtype=="unknown")
+Rest.sum.Admin1.unknown <- summarise(TBEV.Admin1.Rest.unknown, N=length(name))
+Rest.sum.Admin1.unknown <- sum(Rest.sum.Admin1.unknown$N)
+TBEV.Admin2.Rest.unknown <- TBEV.with.Admin2 %>% filter(Country!="Russia",Country!="China",subtype=="unknown")
+Rest.sum.Admin2.unknown <- summarise(TBEV.Admin2.Rest.unknown, N=length(name))
+Rest.sum.Admin2.unknown <- sum(Rest.sum.Admin2.unknown$N)
+TBEV.Admin3.Rest.unknown <- TBEV.with.Admin3 %>% filter(Country!="Russia",Country!="China",subtype=="unknown")
+Rest.sum.Admin3.unknown <- summarise(TBEV.Admin3.Rest.unknown, N=length(name))
+Rest.sum.Admin3.unknown <- sum(Rest.sum.Admin3.unknown$N)
+TBEV.Admin4.Rest.unknown <- TBEV.with.Admin4 %>% filter(Country!="Russia",Country!="China",subtype=="unknown")
+Rest.sum.Admin4.unknown <- summarise(TBEV.Admin4.Rest.unknown, N=length(name))
+Rest.sum.Admin4.unknown <- sum(Rest.sum.Admin4.unknown$N)
+
+
+```
+
+```{r}
+# Créer un dataframe avec deux colonnes
+
+
+
+
+c1 = c("0","0","1","1","2","2","3")
+c2 = c("0","1","1","2","2","3","3")
+#All
+c3 =c(Russia.sum.Admin0+China.sum.Admin0+Rest.sum.Admin0,   Russia.sum.Admin1+China.sum.Admin1+Rest.sum.Admin0, Russia.sum.Admin1+China.sum.Admin1+Rest.sum.Admin1, Russia.sum.Admin2+China.sum.Admin2+Rest.sum.Admin1, Russia.sum.Admin2+China.sum.Admin2+Rest.sum.Admin2, Russia.sum.Admin3+China.sum.Admin3+Rest.sum.Admin2, Russia.sum.Admin3+China.sum.Admin3+Rest.sum.Admin3)
+#Eur
+c4 = c(Russia.sum.Admin0.Eur+China.sum.Admin0.Eur+Rest.sum.Admin0.Eur, Russia.sum.Admin1.Eur+China.sum.Admin1.Eur+Rest.sum.Admin0.Eur, Russia.sum.Admin1.Eur+China.sum.Admin1.Eur+Rest.sum.Admin1.Eur, Russia.sum.Admin2.Eur+China.sum.Admin2.Eur+Rest.sum.Admin1.Eur, Russia.sum.Admin2.Eur+China.sum.Admin2.Eur+Rest.sum.Admin2.Eur, Russia.sum.Admin3.Eur+China.sum.Admin3.Eur+Rest.sum.Admin2.Eur, Russia.sum.Admin3.Eur+China.sum.Admin3.Eur+Rest.sum.Admin3.Eur)
+#Sib
+c5 = c(Russia.sum.Admin0.Sib+China.sum.Admin0.Sib+Rest.sum.Admin0.Sib, Russia.sum.Admin1.Sib+China.sum.Admin1.Sib+Rest.sum.Admin0.Sib, Russia.sum.Admin1.Sib+China.sum.Admin1.Sib+Rest.sum.Admin1.Sib, Russia.sum.Admin2.Sib+China.sum.Admin2.Sib+Rest.sum.Admin1.Sib, Russia.sum.Admin2.Sib+China.sum.Admin2.Sib+Rest.sum.Admin2.Sib, Russia.sum.Admin3.Sib+China.sum.Admin3.Sib+Rest.sum.Admin2.Sib, Russia.sum.Admin3.Sib+China.sum.Admin3.Sib+Rest.sum.Admin3.Sib)
+#FE
+c6 = c(Russia.sum.Admin0.FE+China.sum.Admin0.FE+Rest.sum.Admin0.FE, Russia.sum.Admin1.FE+China.sum.Admin1.FE+Rest.sum.Admin0.FE, Russia.sum.Admin1.FE+China.sum.Admin1.FE+Rest.sum.Admin1.FE, Russia.sum.Admin2.FE+China.sum.Admin2.FE+Rest.sum.Admin1.FE, Russia.sum.Admin2.FE+China.sum.Admin2.FE+Rest.sum.Admin2.FE, Russia.sum.Admin3.FE+China.sum.Admin3.FE+Rest.sum.Admin2.FE, Russia.sum.Admin3.FE+China.sum.Admin3.FE+Rest.sum.Admin3.FE)
+#Unknown
+c7 = c(Russia.sum.Admin0.unknown+China.sum.Admin0.unknown+Rest.sum.Admin0.unknown, Russia.sum.Admin1.unknown+China.sum.Admin1.unknown+Rest.sum.Admin0.unknown, Russia.sum.Admin1.unknown+China.sum.Admin1.unknown+Rest.sum.Admin1.unknown, Russia.sum.Admin2.unknown+China.sum.Admin2.unknown+Rest.sum.Admin1.unknown, Russia.sum.Admin2.unknown+China.sum.Admin2.unknown+Rest.sum.Admin2.unknown, Russia.sum.Admin3.unknown+China.sum.Admin3.unknown+Rest.sum.Admin2.unknown, Russia.sum.Admin3.unknown+China.sum.Admin3.unknown+Rest.sum.Admin3.unknown)
+
+
+
+# Create the dataframe
+df <- data.frame(
+  column1 = c1,
+  column2 = c2,
+  column3 = c3,
+  column4 = c4,
+  column5 = c5,
+  column6 = c6,
+  column7 = c7
+)
+
+# Remove the index
+rownames(df) <- NULL
+colnames(df) <- c("Admin Rest of countries","Admin Russia/China","All","Eur","Sib","FE","unknown")
+
+
+      
+```
+
+
+
+
+
+
+
+
+## TBEV sequences, subtypes and maps
+
+### TBEV with only Admin 0
+
+```{r pivot tables Admin 0, warning=FALSE}
+# Country vs subtype
+df.onlyA0 <- data.frame(
+  Country = TBEV.with.Admin0$Admin0,
+  Subtype = TBEV.with.Admin0$subtype
+)
+
+# Pivot table using dplyr and tidyr         
+subtypes_Admin0 <- df.onlyA0 %>%         
+  group_by(Country, Subtype) %>%
+  summarize(Count = n()) %>%
+  pivot_wider(names_from = Subtype, values_from = Count)
+
+# Print the pivot table
+subtypes_Admin0
+
+#get coordinates
+subtypes_Admin0$long=NA
+subtypes_Admin0$lat=NA
+for(i in 1:nrow(subtypes_Admin0)){
+  Ongoing.sp = subset(GADM.Admin0, GID_0 == as.character(subtypes_Admin0[i,]$Country))
+  centroids <- getSpPPolygonsLabptSlots(Ongoing.sp)
+  subtypes_Admin0[i, "long"] <- as.numeric(centroids[1])
+  subtypes_Admin0[i, "lat"] <- as.numeric(centroids[2])
+}
+
+
+
+#mutate to make a ggplot map using jitter
+library(tidyr)
+
+subtypes_Admin0_mutate <- subtypes_Admin0 %>%
+  gather(key = "subtype", value = "count", Eur:FE) %>%
+  filter(!is.na(count))
+
+#GGplot map Sequences with only Admin 0
+GADM.Admin0.simp = gSimplify(GADM.Admin0, 0.1)
+GADM.Admin0.simp.ggplot = fortify(GADM.Admin0.simp)
+
+GADM.Admin0.subset = subset(GADM.Admin0, GID_0 %in% unique(c(as.character(subtypes_Admin0_mutate$Country))))
+GADM.Admin0.subset.simp = gSimplify(GADM.Admin0.subset, 0.01)
+GADM.Admin0.subset.simp.ggplot = fortify(GADM.Admin0.subset.simp)
+
+Title.Admin0=sum(subtypes_Admin0_mutate$count)
+
+#Separation of data into subtypes dataframes
+liste_subtypes_Admin0_mutate <- split(subtypes_Admin0_mutate, subtypes_Admin0_mutate$subtype)
+
+# Liste des noms de sous-types
+sous_types <- c("Eur", "Sib", "FE", "unknown")
+
+# Créer une liste pour stocker les résultats pour chaque sous-type
+resultats <- list()
+
+# Boucle pour chaque sous-type
+for (sous_type in sous_types) {
+  # Sélectionner le sous-type de la liste
+  subtypes_Admin0_mutate_boucle <- liste_subtypes_Admin0_mutate[[sous_type]]
+  
+  # Filtrer GADM.Admin2
+  GADM.Admin0.subset_boucle <- GADM.Admin0 %>%
+    subset(GID_0 %in% unique(subtypes_Admin0_mutate_boucle$Country))
+  
+  # Simplifier les données géographiques
+  GADM.Admin0.subset.simp_boucle <- gSimplify(GADM.Admin0.subset_boucle, 0.01)
+  
+  # Convertir les données simplifiées en un format adapté à ggplot0
+  GADM.Admin0.subset.simp.ggplot_boucle <- fortify(GADM.Admin0.subset.simp_boucle, region = "row.names")
+  
+  # Ajouter les résultats à la liste des résultats
+  resultats[[sous_type]] <- list(subset = GADM.Admin0.subset_boucle,
+                                 simp = GADM.Admin0.subset.simp_boucle,
+                                 ggplot = GADM.Admin0.subset.simp.ggplot_boucle)
+}
+
+# Accéder aux résultats pour chaque sous-type
+GADM.Admin0.subset_Eur <- resultats$Eur$subset
+GADM.Admin0.subset.simp_Eur <- resultats$Eur$simp
+GADM.Admin0.subset.simp.ggplot_Eur <- resultats$Eur$ggplot
+
+GADM.Admin0.subset_Sib <- resultats$Sib$subset
+GADM.Admin0.subset.simp_Sib <- resultats$Sib$simp
+GADM.Admin0.subset.simp.ggplot_Sib <- resultats$Sib$ggplot
+
+GADM.Admin0.subset_FE <- resultats$FE$subset
+GADM.Admin0.subset.simp_FE <- resultats$FE$simp
+GADM.Admin0.subset.simp.ggplot_FE <- resultats$FE$ggplot
+
+GADM.Admin0.subset_unknown <- resultats$unknown$subset
+GADM.Admin0.subset.simp_unknown <- resultats$unknown$simp
+GADM.Admin0.subset.simp.ggplot_unknown <- resultats$unknown$ggplot
+
+
+
+
+#coordinates plot
+ggplot(subtypes_Admin0_mutate, aes(x = long, y = lat, color = count)) + 
+  geom_point(size = 3) + 
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_bw()
+
+#map
+ggplot() +
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) +
+  geom_polygon(data = GADM.Admin0.subset.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey50",colour = "grey80", alpha = 0.5) +
+  #geom_point(data=TBEV_onlyAdmin0_sum, aes(x = long, y = lat, size=N,color=N)) +
+  geom_jitter(data=subtypes_Admin0_mutate, aes(x=long,y=lat, shape=subtype,color=as.numeric(count)), width=0.7, height=0.7,size=2) +
+  scale_color_viridis(option="plasma",end=0.9,name="Number of\nsequences", trans="reverse") +
+  # Convert to polar coordinates
+  coord_map("ortho", orientation = c(60, 80, 0),xlim=c(0,180),ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+
+  # Removes Axes and labels
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  
+  # Change theme to remove axes and ticks
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed',
+                                        colour = "black"),
+        axis.ticks=element_blank()) +
+  labs(caption = paste("Full dataset- Samples with Admin-0 information (N=",Title.Admin0,")",sep = ""))
+
+
+#showing polygons of sequences with Admin-0 information by subtype
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin0.subset.simp.ggplot_Eur, aes(x = long, y = lat, group = group, fill = "Eur"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin0.subset.simp.ggplot_FE, aes(x = long, y = lat, group = group, fill = "FE"), colour = "blue4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin0.subset.simp.ggplot_Sib, aes(x = long, y = lat, group = group, fill = "Sib"), colour = "green4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin0.subset.simp.ggplot_unknown, aes(x = long, y = lat, group = group, fill = "Unknown"), colour = "orange4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  theme(panel.background = element_blank(), 
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), 
+        axis.ticks=element_blank()) + 
+  labs(caption = paste("Full dataset- Samples with Admin-0 information (N=",Title.Admin0,")",sep = "")) +
+  scale_fill_manual(name = "Subtype",
+                    values = c(Eur = "red3", FE = "blue3", Sib = "green3", Unknown = "orange3"),
+                    labels = c("Eur", "FE", "Sib", "Unknown"),
+                    guide = guide_legend(override.aes = list(colour = c("red4", "blue4", "green4", "orange4")),
+                                          keywidth = 0.5,
+                                          spacing = 0.5))
+
+
+
+
+
+#showing polygons of sequences with Admin-0 information
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin0.subset.simp.ggplot, aes(x = long, y = lat, group = group), fill = "green3",colour = "green4", alpha = 0.5) + 
+  # Convert to polar coordinates 
+  coord_map("ortho", orientation = c(60, 80, 0),xlim=c(0,180),ylim=c(30,90)) + scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+
+# Removes Axes and labels 
+  scale_x_continuous(breaks = NULL) + xlab("") + ylab("") +
+
+# Change theme to remove axes and ticks 
+theme(panel.background = element_blank(), panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), axis.ticks=element_blank()) + labs(caption = paste("Full dataset- Samples with Admin-0 information (N=",Title.Admin0,")",sep = ""))
+
+```
+```{r map for each subtypes}
+
+plot_Eur_Admin0 <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin0.subset.simp.ggplot_Eur, aes(x = long, y = lat, group = group), fill = "red3", colour = "red4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Eur") +
+  theme_void()
+
+plot_Sib_Admin0 <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin0.subset.simp.ggplot_Sib, aes(x = long, y = lat, group = group), fill = "green3", colour = "green4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Sib") +
+  theme_void()
+
+plot_FE_Admin0 <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin0.subset.simp.ggplot_FE, aes(x = long, y = lat, group = group), fill = "blue3", colour = "blue4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "FE") +
+  theme_void()
+
+plot_Unknown_Admin0 <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin0.subset.simp.ggplot_unknown, aes(x = long, y = lat, group = group), fill = "orange3", colour = "orange4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Unknown") +
+  theme_void()
+
+# Affichage des plots séparés
+plot_Eur_Admin0
+plot_Sib_Admin0
+plot_FE_Admin0
+plot_Unknown_Admin0
+
+
+
+
+
+
+
+```
+
+### TBEV with only Admin 1
+
+```{r pivot tables Admin 1, warning=FALSE}
+# Country vs subtype
+df.onlyA1 <- data.frame(
+  Country = TBEV.with.Admin1$Admin0,
+  Admin1= TBEV.with.Admin1$Admin1,
+  Subtype = TBEV.with.Admin1$subtype
+)
+
+# Pivot table using dplyr and tidyr
+subtypes_Admin1 <- df.onlyA1 %>%
+  group_by(Country,Admin1,Subtype) %>%
+  summarize(Count = n()) %>%
+  pivot_wider(names_from = Subtype, values_from = Count)
+
+# Print the pivot table
+subtypes_Admin1
+
+#get coordinates
+#quick fix
+subtypes_Admin1$Admin1=ifelse(subtypes_Admin1$Admin1=="Almaty (Alma-Ata)","Almaty",subtypes_Admin1$Admin1)
+subtypes_Admin1$Admin1=ifelse(subtypes_Admin1$Admin1=="Ysyk-Köl ","Ysyk-Köl",subtypes_Admin1$Admin1)
+
+subtypes_Admin1$long = NA
+subtypes_Admin1$lat = NA
+for(i in 1:nrow(subtypes_Admin1)){
+  Ongoing.sp = subset(GADM.Admin1, GID_0 == as.character(subtypes_Admin1[i,]$Country) & NAME_1 == as.character(subtypes_Admin1[i,]$Admin1))
+  centroids <- getSpPPolygonsLabptSlots(Ongoing.sp)
+  if (length(centroids) >= 2) {
+    subtypes_Admin1[i,]$long = as.numeric(centroids[[1]])
+    subtypes_Admin1[i,]$lat = as.numeric(centroids[[2]])
+  } else {
+    subtypes_Admin1[i,]$long = NA
+    subtypes_Admin1[i,]$lat = NA
+  }
+}
+
+
+
+#mutate to make a ggplot map using jitter
+library(tidyr)
+
+subtypes_Admin1_mutate <- subtypes_Admin1 %>%
+  gather(key = "subtype", value = "count", Eur:FE) %>%
+  filter(!is.na(count))
+
+#GGplot map Sequences with only Admin 0
+GADM.Admin0.simp = gSimplify(GADM.Admin0, 0.1)
+GADM.Admin0.simp.ggplot = fortify(GADM.Admin0.simp)
+
+library(magrittr)
+GADM.Admin1.subset <- GADM.Admin1 %>%
+  subset(GID_0 %in% unique(subtypes_Admin1_mutate$Country) & NAME_1 %in% unique(subtypes_Admin1_mutate$Admin1))
+GADM.Admin1.subset.simp = gSimplify(GADM.Admin1.subset, 0.01)
+GADM.Admin1.subset.simp.ggplot = fortify(GADM.Admin1.subset.simp)
+
+Title.Admin1=sum(subtypes_Admin1_mutate$count)
+
+#Separation of data into subtypes dataframes
+liste_subtypes_Admin1_mutate <- split(subtypes_Admin1_mutate, subtypes_Admin1_mutate$subtype)
+
+
+# Liste des noms de sous-types
+sous_types <- c("Eur", "Sib", "FE", "unknown")
+
+# Créer une liste pour stocker les résultats pour chaque sous-type
+resultats <- list()
+
+#Separation of data into subtypes dataframes
+# Boucle pour chaque sous-type
+for (sous_type in sous_types) {
+  # Sélectionner le sous-type de la liste
+  subtypes_Admin1_mutate_boucle <- liste_subtypes_Admin1_mutate[[sous_type]]
+  
+  # Filtrer GADM.Admin1
+  GADM.Admin1.subset_boucle <- GADM.Admin1 %>%
+    subset(GID_0 %in% unique(subtypes_Admin1_mutate_boucle$Country) & 
+             NAME_1 %in% unique(subtypes_Admin1_mutate_boucle$Admin1))
+  
+  # Simplifier les données géographiques
+  GADM.Admin1.subset.simp_boucle <- gSimplify(GADM.Admin1.subset_boucle, 0.01)
+  
+  # Convertir les données simplifiées en un format adapté à ggplot1
+  GADM.Admin1.subset.simp.ggplot_boucle <- fortify(GADM.Admin1.subset.simp_boucle, region = "row.names")
+  
+  # Ajouter les résultats à la liste des résultats
+  resultats[[sous_type]] <- list(subset = GADM.Admin1.subset_boucle,
+                                 simp = GADM.Admin1.subset.simp_boucle,
+                                 ggplot = GADM.Admin1.subset.simp.ggplot_boucle)
+}
+
+# Accéder aux résultats pour chaque sous-type
+GADM.Admin1.subset_Eur <- resultats$Eur$subset
+GADM.Admin1.subset.simp_Eur <- resultats$Eur$simp
+GADM.Admin1.subset.simp.ggplot_Eur <- resultats$Eur$ggplot
+
+GADM.Admin1.subset_Sib <- resultats$Sib$subset
+GADM.Admin1.subset.simp_Sib <- resultats$Sib$simp
+GADM.Admin1.subset.simp.ggplot_Sib <- resultats$Sib$ggplot
+
+GADM.Admin1.subset_FE <- resultats$FE$subset
+GADM.Admin1.subset.simp_FE <- resultats$FE$simp
+GADM.Admin1.subset.simp.ggplot_FE <- resultats$FE$ggplot
+
+GADM.Admin1.subset_unknown <- resultats$unknown$subset
+GADM.Admin1.subset.simp_unknown <- resultats$unknown$simp
+GADM.Admin1.subset.simp.ggplot_unknown <- resultats$unknown$ggplot
+
+
+
+
+
+#coordinates plot
+ggplot(subtypes_Admin1_mutate, aes(x = long, y = lat, color = count)) + 
+  geom_point(size = 3) + 
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_bw()
+
+#map
+ggplot() +
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) +
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey50",colour = "grey80", alpha = 0.5) +
+  #geom_point(data=TBEV_onlyAdmin0_sum, aes(x = long, y = lat, size=N,color=N)) +
+  geom_jitter(data=subtypes_Admin1_mutate, aes(x=long,y=lat, shape=subtype,color=as.numeric(count)), width=0.7, height=0.7,size=2) +
+  scale_color_viridis(option="plasma",end=0.9,name="Number of\nsequences", trans="reverse") +
+  # Convert to polar coordinates
+  coord_map("ortho", orientation = c(60, 80, 0),xlim=c(0,180),ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+
+  # Removes Axes and labels
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  
+  # Change theme to remove axes and ticks
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed',
+                                        colour = "black"),
+        axis.ticks=element_blank()) +
+  labs(caption = paste("Full dataset - Samples with Admin-1 information (N=",Title.Admin1,")",sep = ""))
+
+
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_Eur, aes(x = long, y = lat, group = group, fill = "Eur"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_FE, aes(x = long, y = lat, group = group, fill = "FE"), colour = "blue4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_Sib, aes(x = long, y = lat, group = group, fill = "Sib"), colour = "green4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_unknown, aes(x = long, y = lat, group = group, fill = "Unknown"), colour = "orange4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  theme(panel.background = element_blank(), 
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), 
+        axis.ticks=element_blank()) + 
+  labs(caption = paste("Full dataset - Samples with Admin-1 information (N=",Title.Admin1,")",sep = "")) +
+  scale_fill_manual(name = "Subtype",
+                    values = c(Eur = "red3", FE = "blue3", Sib = "green3", Unknown = "orange3"),
+                    labels = c("Eur", "FE", "Sib", "Unknown"),
+                    guide = guide_legend(override.aes = list(colour = c("red4", "blue4", "green4", "orange4")),
+                                          keywidth = 0.5,
+                                          spacing = 0.5))
+
+
+
+
+
+
+#showing polygons of sequences with Admin-1 information
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot, aes(x = long, y = lat, group = group), fill = "green3",colour = "green4", alpha = 0.5) + 
+  # Convert to polar coordinates 
+  coord_map("ortho", orientation = c(60, 80, 0),xlim=c(0,180),ylim=c(30,90)) + scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+
+# Removes Axes and labels 
+  scale_x_continuous(breaks = NULL) + xlab("") + ylab("") +
+
+# Change theme to remove axes and ticks 
+theme(panel.background = element_blank(), panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), axis.ticks=element_blank()) + labs(caption = paste("Full dataset - Samples with Admin-1 information (N=",Title.Admin1,")",sep = ""))
+```
+```{r map for each Admin 1 subtypes}
+plot_Eur <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_Eur, aes(x = long, y = lat, group = group), fill = "red3", colour = "red4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Eur") +
+  theme_void()
+
+plot_Sib <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_Sib, aes(x = long, y = lat, group = group), fill = "green3", colour = "green4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Sib") +
+  theme_void()
+
+plot_FE <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_FE, aes(x = long, y = lat, group = group), fill = "blue3", colour = "blue4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "FE") +
+  theme_void()
+
+plot_Unknown <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_unknown, aes(x = long, y = lat, group = group), fill = "orange3", colour = "orange4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Unknown") +
+  theme_void()
+
+# Affichage des plots séparés
+plot_Eur
+plot_Sib
+plot_FE
+plot_Unknown
+
+
+
+
+
+
+
+
+
+
+```
+
+## Russia,China and Kazakhstan in Admin 1 and rest of countries in Admin 1
+```{r}
+
+subtypes_Admin1_mutate_Russia_China <- subtypes_Admin1_mutate %>% filter(Country %in% c("RUS", "CHN","KAZ"))
+subtypes_Admin1_mutate_Rest <- subtypes_Admin1_mutate %>%
+  filter(!(Country %in% c("RUS", "CHN","KAZ")))
+
+GADM.Admin1.subset.Russia_China <- GADM.Admin1 %>% subset(GID_0 %in% c("RUS", "CHN","KAZ") & NAME_1 %in% unique(subtypes_Admin1_mutate_Russia_China$Admin1))
+GADM.Admin1.subset.simp.Russia_China = gSimplify(GADM.Admin1.subset.Russia_China, 0.01)
+GADM.Admin1.subset.simp.ggplot.Russia_China = fortify(GADM.Admin1.subset.simp.Russia_China)
+
+GADM.Admin1.subset.Rest <- GADM.Admin1 %>%
+  subset(GID_0 %in% unique(subtypes_Admin1_mutate_Rest$Country) & NAME_1 %in% unique(subtypes_Admin1_mutate_Rest$Admin1))
+GADM.Admin1.subset.simp.Rest = gSimplify(GADM.Admin1.subset.Rest, 0.01)
+GADM.Admin1.subset.simp.ggplot.Rest = fortify(GADM.Admin1.subset.simp.Rest)
+
+
+Title.Admin1.Admin1 = sum(subtypes_Admin1_mutate_Russia_China$count) + sum(subtypes_Admin1_mutate_Rest$count)
+
+
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot.Russia_China, aes(x = long, y = lat, group = group, fill = "Russia/China/Kazakhstan"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot.Rest, aes(x = long, y = lat, group = group, fill = "Rest of countries"), colour = "green4", alpha = 0.5) + 
+ 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  theme(panel.background = element_blank(), 
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), 
+        axis.ticks=element_blank()) + 
+  labs(title="China, Russia and Kazakhstan in Admin1 and the rest of the countries in Admin 1 ",caption = paste("Full dataset - Samples with Admin-2 information (N=",Title.Admin1.Admin1,")",sep = "")) +
+  scale_fill_manual(name = "",
+                    values = c("Russia/China/Kazakhstan" = "red3", "Rest of countries" = "green3"),
+                    labels = c( "Rest of countries","Russia/China/Kazakhstan"),
+                    guide = guide_legend(override.aes = list(colour = c("green4", "red4")),
+                                          keywidth = 0.5,
+                                          spacing = 0.5))
+
+
+```
+
+
+
+
+### TBEV with only Admin 2
+
+```{r pivot tables Admin 2, warning=FALSE}
+
+
+# Country vs subtype
+df.onlyA2 <- data.frame(
+  Country = TBEV.with.Admin2$Admin0,
+  Admin1= TBEV.with.Admin2$Admin1,
+  Admin2= TBEV.with.Admin2$Admin2,
+  Subtype = TBEV.with.Admin2$subtype
+)
+
+# Pivot table using dplyr and tidyr
+subtypes_Admin2 <- df.onlyA2 %>%
+  group_by(Country,Admin1,Admin2,Subtype) %>%
+  summarize(Count = n()) %>%
+  pivot_wider(names_from = Subtype, values_from = Count)
+
+# Print the pivot table
+subtypes_Admin2
+
+#quick fix
+subtypes_Admin2$Admin1=ifelse(subtypes_Admin2$Admin1=="Karelia" & subtypes_Admin2$Admin2== "Vytegorskiy rayon","Vologda",subtypes_Admin2$Admin1)
+
+
+#get coordinates
+subtypes_Admin2$long = NA
+subtypes_Admin2$lat = NA
+for(i in 1:nrow(subtypes_Admin2)){
+  Ongoing.sp = subset(GADM.Admin2, GID_0 == as.character(subtypes_Admin2[i,]$Country) & NAME_1 == as.character(subtypes_Admin2[i,]$Admin1) & NAME_2 == as.character(subtypes_Admin2[i,]$Admin2))
+  centroids <- getSpPPolygonsLabptSlots(Ongoing.sp)
+  if (length(centroids) >= 2) {
+    subtypes_Admin2[i,]$long = as.numeric(centroids[[1]])
+    subtypes_Admin2[i,]$lat = as.numeric(centroids[[2]])
+  } else {
+    subtypes_Admin2[i,]$long = NA
+    subtypes_Admin2[i,]$lat = NA
+  }
+}
+
+
+#mutate to make a ggplot map using jitter
+library(tidyr)
+
+subtypes_Admin2_mutate <- subtypes_Admin2 %>%
+  gather(key = "subtype", value = "count", Eur:FE) %>%
+  filter(!is.na(count))
+
+#GGplot map Sequences with only Admin 0
+GADM.Admin0.simp = gSimplify(GADM.Admin0, 0.1)
+GADM.Admin0.simp.ggplot = fortify(GADM.Admin0.simp)
+
+#data for map with all TBEV apparitions in Admin2
+library(magrittr)
+GADM.Admin2.subset <- GADM.Admin2 %>%
+  subset(GID_0 %in% unique(subtypes_Admin2_mutate$Country) & NAME_1 %in% unique(subtypes_Admin2_mutate$Admin1) & NAME_2 %in% unique(subtypes_Admin2_mutate$Admin2))
+GADM.Admin2.subset.simp = gSimplify(GADM.Admin2.subset, 0.01)
+GADM.Admin2.subset.simp.ggplot = fortify(GADM.Admin2.subset.simp)
+
+Title.Admin2=sum(subtypes_Admin2_mutate$count)
+
+
+#Separation of data into subtypes dataframes
+liste_subtypes_Admin2_mutate <- split(subtypes_Admin2_mutate, subtypes_Admin2_mutate$subtype)
+
+
+# Liste des noms de sous-types
+sous_types <- c("Eur", "Sib", "FE", "unknown")
+
+# Créer une liste pour stocker les résultats pour chaque sous-type
+resultats <- list()
+
+#Separation of data into subtypes dataframes
+# Boucle pour chaque sous-type
+for (sous_type in sous_types) {
+  # Sélectionner le sous-type de la liste
+  subtypes_Admin2_mutate_boucle <- liste_subtypes_Admin2_mutate[[sous_type]]
+  
+  # Filtrer GADM.Admin2
+  GADM.Admin2.subset_boucle <- GADM.Admin2 %>%
+    subset(GID_0 %in% unique(subtypes_Admin2_mutate_boucle$Country) & 
+             NAME_1 %in% unique(subtypes_Admin2_mutate_boucle$Admin1) & 
+             NAME_2 %in% unique(subtypes_Admin2_mutate_boucle$Admin2))
+  
+  # Simplifier les données géographiques
+  GADM.Admin2.subset.simp_boucle <- gSimplify(GADM.Admin2.subset_boucle, 0.01)
+  
+  # Convertir les données simplifiées en un format adapté à ggplot2
+  GADM.Admin2.subset.simp.ggplot_boucle <- fortify(GADM.Admin2.subset.simp_boucle, region = "row.names")
+  
+  # Ajouter les résultats à la liste des résultats
+  resultats[[sous_type]] <- list(subset = GADM.Admin2.subset_boucle,
+                                 simp = GADM.Admin2.subset.simp_boucle,
+                                 ggplot = GADM.Admin2.subset.simp.ggplot_boucle)
+}
+
+# Accéder aux résultats pour chaque sous-type
+GADM.Admin2.subset_Eur <- resultats$Eur$subset
+GADM.Admin2.subset.simp_Eur <- resultats$Eur$simp
+GADM.Admin2.subset.simp.ggplot_Eur <- resultats$Eur$ggplot
+
+GADM.Admin2.subset_Sib <- resultats$Sib$subset
+GADM.Admin2.subset.simp_Sib <- resultats$Sib$simp
+GADM.Admin2.subset.simp.ggplot_Sib <- resultats$Sib$ggplot
+
+GADM.Admin2.subset_FE <- resultats$FE$subset
+GADM.Admin2.subset.simp_FE <- resultats$FE$simp
+GADM.Admin2.subset.simp.ggplot_FE <- resultats$FE$ggplot
+
+GADM.Admin2.subset_unknown <- resultats$unknown$subset
+GADM.Admin2.subset.simp_unknown <- resultats$unknown$simp
+GADM.Admin2.subset.simp.ggplot_unknown <- resultats$unknown$ggplot
+
+
+#coordinates plot
+ggplot(subtypes_Admin2_mutate, aes(x = long, y = lat, color = count)) + 
+  geom_point(size = 3) + 
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_bw()
+
+
+#map of subtype distribution
+ggplot() +
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) +
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey50",colour = "grey80", alpha = 0.5) +
+  geom_jitter(data=subtypes_Admin2_mutate, aes(x=long, y=lat, shape=subtype, color=subtype), width=0.7, height=0.7, size=2, alpha = 0.5) +  # Mapping subtype to color with transparency
+  scale_color_manual(values = c("red", "blue", "green", "orange", "purple")) +  # Utilisation de couleurs spécifiques
+  # Convert to polar coordinates
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  
+  # Removes Axes and labels
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  
+  # Change theme to remove axes and ticks
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"),
+        axis.ticks=element_blank()) +
+  labs(caption = paste("Full dataset - Samples with Admin-2 information (N=",Title.Admin2,")",sep = ""))
+
+
+#map of subtypes distribution and number of apparitions
+ggplot() +
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) +
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey50",colour = "grey80", alpha = 0.5) +
+  #geom_point(data=TBEV_onlyAdmin0_sum, aes(x = long, y = lat, size=N,color=N)) +
+  geom_jitter(data=subtypes_Admin2_mutate, aes(x=long,y=lat, shape=subtype,color=as.numeric(count)), width=0.7, height=0.7,size=2) +
+  scale_color_viridis(option="plasma",end=0.9,name="Number of\nsequences", trans="reverse") +
+  # Convert to polar coordinates
+  coord_map("ortho", orientation = c(60, 80, 0),xlim=c(0,180),ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+
+  # Removes Axes and labels
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  
+  # Change theme to remove axes and ticks
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed',
+                                        colour = "black"),
+        axis.ticks=element_blank()) +
+  labs(caption = paste("Full dataset - Samples with Admin-2 information (N=",Title.Admin2,")",sep = ""))
+
+
+#ggsave("plot.pdf", my_plot, width = 10, height = 8, units = "in")
+
+
+
+
+#showing polygons of sequences with Admin-2 information by subtype
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_Eur, aes(x = long, y = lat, group = group, fill = "Eur"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_FE, aes(x = long, y = lat, group = group, fill = "FE"), colour = "blue4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_Sib, aes(x = long, y = lat, group = group, fill = "Sib"), colour = "green4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_unknown, aes(x = long, y = lat, group = group, fill = "Unknown"), colour = "orange4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  theme(panel.background = element_blank(), 
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), 
+        axis.ticks=element_blank()) + 
+  labs(caption = paste("Full dataset - Samples with Admin-2 information (N=",Title.Admin2,")",sep = "")) +
+  scale_fill_manual(name = "Subtype",
+                    values = c(Eur = "red3", FE = "blue3", Sib = "green3", Unknown = "orange3"),
+                    labels = c("Eur", "FE", "Sib", "Unknown"),
+                    guide = guide_legend(override.aes = list(colour = c("red4", "blue4", "green4", "orange4")),
+                                          keywidth = 0.5,
+                                          spacing = 0.5))
+
+
+
+
+
+#showing polygons of sequences with Admin-2 information
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot, aes(x = long, y = lat, group = group), fill = "green3",colour = "green4", alpha = 0.5) + 
+
+  # Convert to polar coordinates 
+  coord_map("ortho", orientation = c(60, 80, 0),xlim=c(0,180),ylim=c(30,90)) + scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+
+  
+  
+# Removes Axes and labels 
+  scale_x_continuous(breaks = NULL) + xlab("") + ylab("") +
+
+# Change theme to remove axes and ticks 
+theme(panel.background = element_blank(), panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), axis.ticks=element_blank()) + labs(caption = paste("Full dataset - Samples with Admin-2 information (N=",Title.Admin2,")",sep = ""))
+
+```
+##Map for each Admin 2 subtypes
+
+
+```{r}
+ ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_Eur, aes(x = long, y = lat, group = group), fill = "red3", colour = "red4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Eur") +
+  theme_void()
+
+ ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_Sib, aes(x = long, y = lat, group = group), fill = "green3", colour = "green4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Sib") +
+  theme_void()
+
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_FE, aes(x = long, y = lat, group = group), fill = "blue3", colour = "blue4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "FE") +
+  theme_void()
+
+ ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_unknown, aes(x = long, y = lat, group = group), fill = "orange3", colour = "orange4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Unknown") +
+  theme_void()
+
+
+
+```
+##TBEV with Admin 2 in Russia, China and KAZ and Admin 2 in rest of countries
+
+```{r}
+
+subtypes_Admin2_mutate_Russia_China_KAZ <- subtypes_Admin2_mutate %>% filter(Country %in% c("RUS", "CHN","KAZ"))
+subtypes_Admin2_mutate_Rest <- subtypes_Admin2_mutate %>%
+  filter(!(Country %in% c("RUS", "CHN","KAZ")))
+
+GADM.Admin2.subset.Russia_China_KAZ <- GADM.Admin2 %>% subset(GID_0 %in% c("RUS", "CHN","KAZ") & NAME_1 %in% unique(subtypes_Admin2_mutate_Russia_China_KAZ$Admin1) & NAME_2 %in% unique(subtypes_Admin2_mutate_Russia_China_KAZ$Admin2))
+GADM.Admin2.subset.simp.Russia_China_KAZ = gSimplify(GADM.Admin2.subset.Russia_China_KAZ, 0.01)
+GADM.Admin2.subset.simp.ggplot.Russia_China_KAZ = fortify(GADM.Admin2.subset.simp.Russia_China_KAZ)
+
+GADM.Admin2.subset.Rest <- GADM.Admin2 %>%
+  subset(GID_0 %in% unique(subtypes_Admin2_mutate_Rest$Country) & NAME_1 %in% unique(subtypes_Admin2_mutate_Rest$Admin1) & NAME_2 %in% unique(subtypes_Admin2_mutate_Rest$Admin2))
+GADM.Admin2.subset.simp.Rest = gSimplify(GADM.Admin2.subset.Rest, 0.01)
+GADM.Admin2.subset.simp.ggplot.Rest = fortify(GADM.Admin2.subset.simp.Rest)
+
+Title.Admin2.Admin2 = sum(subtypes_Admin2_mutate_Russia_China_KAZ$count) + sum(subtypes_Admin2_mutate_Rest$count)
+
+
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot.Russia_China_KAZ, aes(x = long, y = lat, group = group, fill = "Russia/China"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot.Rest, aes(x = long, y = lat, group = group, fill = "Rest of countries"), colour = "green4", alpha = 0.5) + 
+ 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  theme(panel.background = element_blank(), 
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), 
+        axis.ticks=element_blank()) + 
+  labs(title="China, Russia and Kazakhstan in Admin 2 and the rest of the countries in Admin 2 ",caption = paste("Full dataset - Samples with Admin-2 information (N=",Title.Admin2.Admin2,")",sep = "")) +
+  scale_fill_manual(name = "",
+                    values = c("Russia/China" = "red3", "Rest of countries" = "green3"),
+                    labels = c( "Rest of countries","Russia/China/Kazakhstan"),
+                    guide = guide_legend(override.aes = list(colour = c("green4", "red4")),
+                                          keywidth = 0.5,
+                                          spacing = 0.5))
+
+```
+
+
+
+### TBEV with only Admin-3 unit
+
+```{r pivot tables Admin 3, warning=FALSE}
+# Country vs subtype 
+df.onlyA3 <- data.frame( Country = TBEV.with.Admin3$Admin0, Admin1= TBEV.with.Admin3$Admin1, Admin2= TBEV.with.Admin3$Admin2, Admin3= TBEV.with.Admin3$Admin3, Subtype = TBEV.with.Admin3$subtype )
+
+# Pivot table using dplyr and tidyr
+
+subtypes_Admin3 <- df.onlyA3 %>% group_by(Country,Admin1,Admin2,Admin3,Subtype) %>% summarize(Count = n()) %>% pivot_wider(names_from = Subtype, values_from = Count)
+
+
+#quick fix 
+subtypes_Admin3$Admin2=ifelse(subtypes_Admin3$Admin2== "Graz Umgebung","Graz-Umgebung",subtypes_Admin3$Admin2)
+
+#get coordinates 
+subtypes_Admin3$long = NA
+subtypes_Admin3$lat = NA
+for(i in 1:nrow(subtypes_Admin3)){
+   Ongoing.sp = subset(GADM.Admin3, GID_0 == as.character(subtypes_Admin3[i,]$Country) & NAME_1 == as.character(subtypes_Admin3[i,]$Admin1) & NAME_2 == as.character(subtypes_Admin3[i,]$Admin2) & NAME_3 == as.character(subtypes_Admin3[i,]$Admin3))
+  centroids <- getSpPPolygonsLabptSlots(Ongoing.sp)
+  if (length(centroids) >= 2) {
+    subtypes_Admin3[i,]$long = as.numeric(centroids[[1]])
+    subtypes_Admin3[i,]$lat = as.numeric(centroids[[2]])
+} else {
+    subtypes_Admin3[i,]$long = NA
+    subtypes_Admin3[i,]$lat = NA
+    }
+ }
+                           
+
+#mutate to make a ggplot map using jitter 
+library(tidyr)
+
+subtypes_Admin3_mutate <- subtypes_Admin3 %>% 
+  gather(key = "subtype", value = "count", unknown:Sib) %>% 
+  filter(!is.na(count))
+
+#GGplot map Sequences with only Admin 3 
+GADM.Admin0.simp = gSimplify(GADM.Admin0, 0.1) 
+GADM.Admin0.simp.ggplot = fortify(GADM.Admin0.simp)
+
+library(magrittr) 
+GADM.Admin3.subset <- GADM.Admin3 %>% subset(GID_0 %in% unique(subtypes_Admin3_mutate$Country) & NAME_1 %in% unique(subtypes_Admin3_mutate$Admin1) & NAME_2 %in% unique(subtypes_Admin3_mutate$Admin2)& NAME_3 %in% unique(subtypes_Admin3_mutate$Admin3)) 
+GADM.Admin3.subset.simp = gSimplify(GADM.Admin3.subset, 0.01) 
+GADM.Admin3.subset.simp.ggplot = fortify(GADM.Admin3.subset.simp)
+
+Title.Admin3=sum(subtypes_Admin3_mutate$count)
+
+#Separation of data into subtypes dataframes
+liste_subtypes_Admin3_mutate <- split(subtypes_Admin3_mutate, subtypes_Admin3_mutate$subtype)
+
+
+# Liste des noms de sous-types
+sous_types <- c("Eur", "Sib", "FE", "unknown")
+
+# Créer une liste pour stocker les résultats pour chaque sous-type
+resultats <- list()
+
+#Separation of data into subtypes dataframes
+# Boucle pour chaque sous-type
+for (sous_type in sous_types) {
+  # Sélectionner le sous-type de la liste
+  subtypes_Admin3_mutate_boucle <- liste_subtypes_Admin3_mutate[[sous_type]]
+  
+  # Filtrer GADM.Admin3
+  GADM.Admin3.subset_boucle <- GADM.Admin3 %>%
+    subset(GID_0 %in% unique(subtypes_Admin3_mutate_boucle$Country) & 
+             NAME_1 %in% unique(subtypes_Admin3_mutate_boucle$Admin1) & 
+             NAME_2 %in% unique(subtypes_Admin3_mutate_boucle$Admin2)& 
+             NAME_3 %in% unique(subtypes_Admin3_mutate_boucle$Admin3))
+  
+  # Simplifier les données géographiques
+  GADM.Admin3.subset.simp_boucle <- gSimplify(GADM.Admin3.subset_boucle, 0.01)
+  
+  # Convertir les données simplifiées en un format adapté à ggplot3
+  GADM.Admin3.subset.simp.ggplot_boucle <- fortify(GADM.Admin3.subset.simp_boucle, region = "row.names")
+  
+  # Ajouter les résultats à la liste des résultats
+  resultats[[sous_type]] <- list(subset = GADM.Admin3.subset_boucle,
+                                 simp = GADM.Admin3.subset.simp_boucle,
+                                 ggplot = GADM.Admin3.subset.simp.ggplot_boucle)
+}
+
+# Accéder aux résultats pour chaque sous-type
+GADM.Admin3.subset_Eur <- resultats$Eur$subset
+GADM.Admin3.subset.simp_Eur <- resultats$Eur$simp
+GADM.Admin3.subset.simp.ggplot_Eur <- resultats$Eur$ggplot
+
+GADM.Admin3.subset_Sib <- resultats$Sib$subset
+GADM.Admin3.subset.simp_Sib <- resultats$Sib$simp
+GADM.Admin3.subset.simp.ggplot_Sib <- resultats$Sib$ggplot
+
+GADM.Admin3.subset_FE <- resultats$FE$subset
+GADM.Admin3.subset.simp_FE <- resultats$FE$simp
+GADM.Admin3.subset.simp.ggplot_FE <- resultats$FE$ggplot
+
+GADM.Admin3.subset_unknown <- resultats$unknown$subset
+GADM.Admin3.subset.simp_unknown <- resultats$unknown$simp
+GADM.Admin3.subset.simp.ggplot_unknown <- resultats$unknown$ggplot
+
+
+
+##coordinates plot
+ggplot(subtypes_Admin3_mutate, aes(x = long, y = lat, color = count)) + 
+  geom_point(size = 3) + 
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_bw()
+
+#map
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin3.subset.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey50",colour = "grey80", alpha = 0.5) + 
+  #geom_point(data=TBEV_onlyAdmin0_sum, aes(x = long, y = lat, size=N,color=N)) + 
+  geom_jitter(data=subtypes_Admin3_mutate, aes(x=long,y=lat, shape=subtype,color=as.numeric(count)), width=0.7, height=0.7,size=2) + 
+  scale_color_viridis(option="plasma",end=0.9,name="Number of\nsequences", trans="reverse") + 
+  # Convert to polar coordinates 
+  coord_map("ortho", orientation = c(60, 60, 0),xlim=c(0,20),ylim=c(40,55)) + scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+
+# Removes Axes and labels 
+  scale_x_continuous(breaks = NULL) + xlab("") + ylab("") +
+
+# Change theme to remove axes and ticks 
+theme(panel.background = element_blank(), panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), axis.ticks=element_blank()) + labs(caption = paste("Full dataset - Samples with Admin-3 information (N=",Title.Admin3,")",sep = ""))
+
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin3.subset.simp.ggplot_Eur, aes(x = long, y = lat, group = group, fill = "Eur"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin3.subset.simp.ggplot_Sib, aes(x = long, y = lat, group = group, fill = "Sib"), colour = "green4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin3.subset.simp.ggplot_unknown, aes(x = long, y = lat, group = group, fill = "Unknown"), colour = "orange4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 60, 0),xlim=c(0,40),ylim=c(40,60)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  theme(panel.background = element_blank(), 
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), 
+        axis.ticks=element_blank()) + 
+  labs(caption = paste("Full dataset - Samples with Admin-3 information (N=",Title.Admin3,")",sep = "")) +
+  scale_fill_manual(name = "Subtype",
+                    values = c(Eur = "red3", Sib = "green3", Unknown = "orange3"),
+                    labels = c("Eur", "FE",  "Unknown"),
+                    guide = guide_legend(override.aes = list(colour = c("red4", "green4", "orange4")),
+                                          keywidth = 0.5,
+                                          spacing = 0.5))
+
+
+
+#showing polygons of sequences with Admin-3 information
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin3.subset.simp.ggplot, aes(x = long, y = lat, group = group), fill = "green3",colour = "green4", alpha = 0.5) + 
+  # Convert to polar coordinates 
+  coord_map("ortho", orientation = c(60, 60, 0),xlim=c(0,30),ylim=c(40,60)) + scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+
+# Removes Axes and labels 
+  scale_x_continuous(breaks = NULL) + xlab("") + ylab("") +
+
+# Change theme to remove axes and ticks 
+theme(panel.background = element_blank(), panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), axis.ticks=element_blank()) + labs(caption = paste("Full dataset - Samples with Admin-3 information (N=",Title.Admin3,")",sep = ""))
+
+
+### 
+```
+
+```{r map for each Admin 3 subtypes}
+plot_Eur_Admin3 <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin3.subset.simp.ggplot_Eur, aes(x = long, y = lat, group = group), fill = "red3", colour = "red4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 60, 0),xlim=c(0,30),ylim=c(40,60)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Eur") +
+  theme_void()
+
+plot_Sib_Admin3 <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin3.subset.simp.ggplot_Sib, aes(x = long, y = lat, group = group), fill = "green3", colour = "green4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 60, 0),xlim=c(0,30),ylim=c(40,60)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Sib") +
+  theme_void()
+
+
+plot_Unknown_Admin3 <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin3.subset.simp.ggplot_unknown, aes(x = long, y = lat, group = group), fill = "orange3", colour = "orange4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 60, 0),xlim=c(0,30),ylim=c(40,60)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Unknown") +
+  theme_void()
+
+# Affichage des plots séparés
+plot_Eur_Admin3
+plot_Sib_Admin3
+plot_Unknown_Admin3
+
+```
+
+
+
+### TBEV with only Admin-4 unit
+
+```{r pivot tables Admin 4, warning=FALSE}
+
+# Country vs subtype 
+df.onlyA4 <- data.frame( Country = TBEV.with.Admin4$Admin0, Admin1= TBEV.with.Admin4$Admin1, Admin2= TBEV.with.Admin4$Admin2, Admin3= TBEV.with.Admin4$Admin3, Admin4= TBEV.with.Admin4$Admin4, Subtype = TBEV.with.Admin4$subtype )
+
+# Pivot table using dplyr and tidyr
+
+subtypes_Admin4 <- df.onlyA4 %>% group_by(Country,Admin1,Admin2,Admin3,Admin4,Subtype) %>% summarize(Count = n()) %>% pivot_wider(names_from = Subtype, values_from = Count)
+
+# Print the pivot table
+
+subtypes_Admin4
+
+#get coordinates 
+
+subtypes_Admin4$long = NA
+subtypes_Admin4$lat = NA
+for(i in 1:nrow(subtypes_Admin4)){
+   Ongoing.sp = subset(GADM.Admin4, GID_0 == as.character(subtypes_Admin4[i,]$Country) & NAME_1 == as.character(subtypes_Admin4[i,]$Admin1) & NAME_2 == as.character(subtypes_Admin4[i,]$Admin2) & NAME_3 == as.character(subtypes_Admin4[i,]$Admin3) & NAME_4 == as.character(subtypes_Admin4[i,]$Admin4))
+  centroids <- getSpPPolygonsLabptSlots(Ongoing.sp)
+  if (length(centroids) >= 2) {
+    subtypes_Admin4[i,]$long = as.numeric(centroids[[1]])
+    subtypes_Admin4[i,]$lat = as.numeric(centroids[[2]])
+  } else {
+    subtypes_Admin4[i,]$long = NA
+    subtypes_Admin4[i,]$lat = NA
+  }
+}
+
+#mutate to make a ggplot map using jitter 
+library(tidyr)
+
+subtypes_Admin4_mutate <- subtypes_Admin4 %>% 
+  gather(key = "subtype", value = "count", Eur:Sib) %>% 
+  filter(!is.na(count))
+
+#GGplot map Sequences with only Admin 3 
+GADM.Admin0.simp = gSimplify(GADM.Admin0, 0.1) 
+GADM.Admin0.simp.ggplot = fortify(GADM.Admin0.simp)
+
+library(magrittr) 
+
+GADM.Admin4.subset <- GADM.Admin4 %>% subset(GID_0 %in% unique(subtypes_Admin4_mutate$Country) & NAME_1 %in% unique(subtypes_Admin4_mutate$Admin1) & NAME_2 %in% unique(subtypes_Admin4_mutate$Admin2)& NAME_3 %in% unique(subtypes_Admin4_mutate$Admin3) & NAME_4 %in% unique(subtypes_Admin4_mutate$Admin4)) 
+
+GADM.Admin4.subset <- GADM.Admin4 %>% subset(NAME_4 %in% unique(subtypes_Admin4_mutate$Admin4)) 
+GADM.Admin4.subset.simp = gSimplify(GADM.Admin4.subset, 0.01) 
+GADM.Admin4.subset.simp.ggplot = fortify(GADM.Admin4.subset.simp)
+
+Title.Admin4=sum(subtypes_Admin4_mutate$count)
+
+#Separation of data into subtypes dataframes
+liste_subtypes_Admin4_mutate <- split(subtypes_Admin4_mutate, subtypes_Admin4_mutate$subtype)
+
+
+# Liste des noms de sous-types
+sous_types <- c("Eur", "Sib", "FE", "unknown")
+
+# Créer une liste pour stocker les résultats pour chaque sous-type
+resultats <- list()
+
+#Separation of data into subtypes dataframes
+# Boucle pour chaque sous-type
+for (sous_type in sous_types) {
+  # Sélectionner le sous-type de la liste
+  subtypes_Admin4_mutate_boucle <- liste_subtypes_Admin4_mutate[[sous_type]]
+  
+  # Filtrer GADM.Admin4
+  GADM.Admin4.subset_boucle <- GADM.Admin4 %>%
+    subset(GID_0 %in% unique(subtypes_Admin4_mutate_boucle$Country) & 
+             NAME_1 %in% unique(subtypes_Admin4_mutate_boucle$Admin1) & 
+             NAME_2 %in% unique(subtypes_Admin4_mutate_boucle$Admin2)& 
+             NAME_3 %in% unique(subtypes_Admin4_mutate_boucle$Admin3)& 
+             NAME_4 %in% unique(subtypes_Admin4_mutate_boucle$Admin4))
+  
+  # Simplifier les données géographiques
+  GADM.Admin4.subset.simp_boucle <- gSimplify(GADM.Admin4.subset_boucle, 0.01)
+  
+  # Convertir les données simplifiées en un format adapté à ggplot4
+  GADM.Admin4.subset.simp.ggplot_boucle <- fortify(GADM.Admin4.subset.simp_boucle, region = "row.names")
+  
+  # Ajouter les résultats à la liste des résultats
+  resultats[[sous_type]] <- list(subset = GADM.Admin4.subset_boucle,
+                                 simp = GADM.Admin4.subset.simp_boucle,
+                                 ggplot = GADM.Admin4.subset.simp.ggplot_boucle)
+}
+
+# Accéder aux résultats pour chaque sous-type
+GADM.Admin4.subset_Eur <- resultats$Eur$subset
+GADM.Admin4.subset.simp_Eur <- resultats$Eur$simp
+GADM.Admin4.subset.simp.ggplot_Eur <- resultats$Eur$ggplot
+
+GADM.Admin4.subset_Sib <- resultats$Sib$subset
+GADM.Admin4.subset.simp_Sib <- resultats$Sib$simp
+GADM.Admin4.subset.simp.ggplot_Sib <- resultats$Sib$ggplot
+
+GADM.Admin4.subset_FE <- resultats$FE$subset
+GADM.Admin4.subset.simp_FE <- resultats$FE$simp
+GADM.Admin4.subset.simp.ggplot_FE <- resultats$FE$ggplot
+
+GADM.Admin4.subset_unknown <- resultats$unknown$subset
+GADM.Admin4.subset.simp_unknown <- resultats$unknown$simp
+GADM.Admin4.subset.simp.ggplot_unknown <- resultats$unknown$ggplot
+
+
+
+
+
+
+
+
+
+##coordinates plot
+ggplot(subtypes_Admin4_mutate, aes(x = long, y = lat, color = count)) + 
+  geom_point(size = 3) + 
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_bw()
+
+#map
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin4.subset.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey50",colour = "grey80", alpha = 0.5) + 
+  #geom_point(data=TBEV_onlyAdmin0_sum, aes(x = long, y = lat, size=N,color=N)) + 
+  geom_jitter(data=subtypes_Admin4_mutate, aes(x=long,y=lat, shape=subtype,color=as.numeric(count)), width=0.7, height=0.7,size=2) + 
+  scale_color_viridis(option="plasma",end=0.9,name="Number of\nsequences", trans="reverse") + 
+  # Convert to polar coordinates 
+  coord_map("ortho", orientation = c(60, 80, 0),xlim=c(0,30),ylim=c(45,70)) + scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+
+# Removes Axes and labels 
+  scale_x_continuous(breaks = NULL) + xlab("") + ylab("") +
+
+# Change theme to remove axes and ticks 
+theme(panel.background = element_blank(), panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), axis.ticks=element_blank()) + labs(caption = paste("Full dataset - Samples with Admin-4 information (N=",Title.Admin4,")",sep = ""))
+
+#showing polygons of sequences with Admin-4 information by subtype
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin4.subset.simp.ggplot_Eur, aes(x = long, y = lat, group = group, fill = "Eur"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin4.subset.simp.ggplot_Sib, aes(x = long, y = lat, group = group, fill = "Sib"), colour = "green4", alpha = 0.5) + 
+coord_map("ortho", orientation = c(60, 80, 0),xlim=c(0,30),ylim=c(45,70)) + scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  theme(panel.background = element_blank(), 
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), 
+        axis.ticks=element_blank()) + 
+  labs(caption = paste("Full dataset - Samples with Admin-4 information (N=",Title.Admin4,")",sep = "")) +
+  scale_fill_manual(name = "Subtype",
+                    values = c(Eur = "red3", Sib = "green3"),  # Utiliser seulement les couleurs pour "Eur" et "Sib"
+                    labels = c("Eur", "Sib"),   # Utiliser seulement les labels pour "Eur" et "Sib"
+                    guide = "legend")   # Afficher la légende
+
+
+
+#showing polygons of sequences with Admin-4 information
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin4.subset.simp.ggplot, aes(x = long, y = lat, group = group), fill = "green3",colour = "green4", alpha = 0.5) + 
+  # Convert to polar coordinates 
+  coord_map("ortho", orientation = c(60, 80, 0),xlim=c(0,30),ylim=c(45,70)) + scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+
+# Removes Axes and labels 
+  scale_x_continuous(breaks = NULL) + xlab("") + ylab("") +
+
+# Change theme to remove axes and ticks 
+theme(panel.background = element_blank(), panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), axis.ticks=element_blank()) + labs(caption = paste("Full dataset - Samples with Admin-4 information (N=",Title.Admin4,")",sep = ""))
+
+
+### 
+```
+```{r}
+plot_Eur_Admin4 <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin4.subset.simp.ggplot_Eur, aes(x = long, y = lat, group = group), fill = "red3", colour = "red4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0),xlim=c(0,30),ylim=c(45,70)) + scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Eur") +
+  theme_void()
+
+plot_Sib_Admin4 <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin4.subset.simp.ggplot_Sib, aes(x = long, y = lat, group = group), fill = "green3", colour = "green4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0),xlim=c(0,30),ylim=c(45,70)) + scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Sib") +
+  theme_void()
+
+
+
+# Affichage des plots séparés
+plot_Eur_Admin4
+plot_Sib_Admin4
+
+
+```
+##TBEV with Admin 2 in Russia, China and Kazakhstan and Admin 1 in rest of countries
+
+#### This one will be the one used for the final map
+
+
+
+
+
+```{r}
+# Your original data and plot setup
+Title.Admin2.Admin1 = sum(subtypes_Admin2_mutate_Russia_China_KAZ$count) + sum(subtypes_Admin1_mutate_Rest$count)
+
+base_plot <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot.Russia_China_KAZ, aes(x = long, y = lat, group = group, fill = "Russia/China"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot.Rest, aes(x = long, y = lat, group = group, fill = "Rest of countries"), colour = "green4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  theme(panel.background = element_blank(), 
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), 
+        axis.ticks = element_blank(),
+        legend.position = "none") + 
+  scale_fill_manual(name = "",
+                    values = c("Russia/China" = "red3", "Rest of countries" = "green3"),
+                    labels = c("Other countries","Russia, China and Kazakhstan"),
+                    guide = guide_legend(override.aes = list(colour = c("green4", "red4")),
+                                          keywidth = 0.5,
+                                          spacing = 0.5))
+
+# Create the legend separately with transparent background, bold text, and larger size
+legend <- get_legend(base_plot + 
+                     theme(legend.position = "right",
+                           legend.background = element_rect(fill = alpha('white', 0)),  # Transparent background
+                           legend.key = element_rect(fill = alpha('white', 0)),       # Transparent key background
+                           legend.text = element_text(face = "bold", size = 12),       # Bold and larger text
+                           legend.title = element_text(size = 14),                     # Larger title
+                           legend.key.size = unit(1, "cm")))                          # Larger key size
+
+# Combine the plot and legend using ggdraw and draw_plot
+combined_plot <- ggdraw() +
+  draw_plot(base_plot, 0, 0, 1, 1) +
+  draw_plot(legend, 0.6, 0.6, 0.4, 0.4)  # Adjust the position and size of the legend as needed
+
+# Display the plot
+print(combined_plot)
+
+ggsave("/Users/loicgonzalez/Library/CloudStorage/OneDrive-UniversitéLibredeBruxelles/Bioingénieur/MA-2- 2023-2024/Mémoire/GitHub/Memoire/Données & script/combined_plot.png", plot = combined_plot, width = 10, height = 8, dpi = 300)
+
+```
+
+
+
+
+##TBEV with Admin 2 in Russia, China and KAZ and Admin 1 in rest of countries by subtypes 
+
+```{r}
+#Russia:China
+#Separation of data into subtypes dataframes
+
+subtypes_Admin2_mutate_Russia_China_KAZ <- subtypes_Admin2_mutate %>% filter(Country %in% c("RUS", "CHN", "KAZ"))
+subtypes_Admin1_mutate_Rest <- subtypes_Admin1_mutate %>% filter(!(Country %in% c("RUS", "CHN", "KAZ")))
+GADM.Admin2.subset.Russia_China_KAZ <- GADM.Admin2 %>% subset(GID_0 %in% c("RUS", "CHN", "KAZ") & NAME_1 %in% unique(subtypes_Admin2_mutate_Russia_China_KAZ$Admin1) & NAME_2 %in% unique(subtypes_Admin2_mutate_Russia_China_KAZ$Admin2))
+GADM.Admin2.subset.simp.Russia_China_KAZ = gSimplify(GADM.Admin2.subset.Russia_China_KAZ, 0.01)
+GADM.Admin2.subset.simp.ggplot.Russia_China_KAZ = fortify(GADM.Admin2.subset.simp.Russia_China_KAZ)
+liste_subtypes_Admin2_mutate_Russia_China_KAZ <- split(subtypes_Admin2_mutate_Russia_China_KAZ, subtypes_Admin2_mutate_Russia_China_KAZ$subtype)
+
+
+
+
+# Liste des noms de sous-types
+sous_types <- c("Eur", "Sib", "FE", "unknown")
+
+# Créer une liste pour stocker les résultats pour chaque sous-type
+resultats <- list()
+
+#Separation of data into subtypes dataframes
+# Boucle pour chaque sous-type
+for (sous_type in sous_types) {
+  # Sélectionner le sous-type de la liste
+  subtypes_Admin2_mutate_boucle_Russia_China <- liste_subtypes_Admin2_mutate_Russia_China_KAZ[[sous_type]]
+  
+  # Filtrer GADM.Admin2
+  GADM.Admin2.subset_boucle <- GADM.Admin2 %>%
+    subset(GID_0 %in% c("RUS", "CHN") & 
+             NAME_1 %in% unique(subtypes_Admin2_mutate_boucle_Russia_China$Admin1) & 
+             NAME_2 %in% unique(subtypes_Admin2_mutate_boucle_Russia_China$Admin2))
+  
+  # Simplifier les données géographiques
+  GADM.Admin2.subset.simp_boucle <- gSimplify(GADM.Admin2.subset_boucle, 0.01)
+  
+  # Convertir les données simplifiées en un format adapté à ggplot2
+  GADM.Admin2.subset.simp.ggplot_boucle <- fortify(GADM.Admin2.subset.simp_boucle, region = "row.names")
+  
+  # Ajouter les résultats à la liste des résultats
+  resultats[[sous_type]] <- list(subset = GADM.Admin2.subset_boucle,
+                                 simp = GADM.Admin2.subset.simp_boucle,
+                                 ggplot = GADM.Admin2.subset.simp.ggplot_boucle)
+}
+
+# Accéder aux résultats pour chaque sous-type
+GADM.Admin2.subset_Eur_Russia_China_KAZ <- resultats$Eur$subset
+GADM.Admin2.subset.simp_Eur_Russia_China_KAZ <- resultats$Eur$simp
+GADM.Admin2.subset.simp.ggplot_Eur_Russia_China_KAZ <- resultats$Eur$ggplot
+
+GADM.Admin2.subset_Sib_Russia_China_KAZ <- resultats$Sib$subset
+GADM.Admin2.subset.simp_Sib_Russia_China_KAZ <- resultats$Sib$simp
+GADM.Admin2.subset.simp.ggplot_Sib_Russia_China_KAZ <- resultats$Sib$ggplot
+
+GADM.Admin2.subset_FE_Russia_China_KAZ <- resultats$FE$subset
+GADM.Admin2.subset.simp_FE_Russia_China_KAZ <- resultats$FE$simp
+GADM.Admin2.subset.simp.ggplot_FE_Russia_China_KAZ <- resultats$FE$ggplot
+
+GADM.Admin2.subset_unknown_Russia_China_KAZ <- resultats$unknown$subset
+GADM.Admin2.subset.simp_unknown_Russia_China_KAZ <- resultats$unknown$simp
+GADM.Admin2.subset.simp.ggplot_unknown_Russia_China_KAZ <- resultats$unknown$ggplot
+
+#Rest of countries
+#Separation of data into subtypes dataframes
+liste_subtypes_Admin1_mutate_Rest <- split(subtypes_Admin1_mutate_Rest, subtypes_Admin1_mutate_Rest$subtype)
+
+# Liste des noms de sous-types
+sous_types <- c("Eur", "Sib", "FE", "unknown")
+
+# Créer une liste pour stocker les résultats pour chaque sous-type
+resultats <- list()
+
+#Separation of data into subtypes dataframes  
+# Boucle pour chaque sous-type
+for (sous_type in sous_types) {
+  # Sélectionner le sous-type de la liste
+  subtypes_Admin1_mutate_boucle_Rest <- liste_subtypes_Admin1_mutate_Rest[[sous_type]]
+  
+  # Filtrer GADM.Admin1
+  GADM.Admin1.subset_boucle <- GADM.Admin1 %>%
+    subset(GID_0 %in% unique(subtypes_Admin1_mutate_boucle_Rest$Country) & 
+             NAME_1 %in% unique(subtypes_Admin1_mutate_boucle_Rest$Admin1))
+  
+  # Simplifier les données géographiques
+  GADM.Admin1.subset.simp_boucle <- gSimplify(GADM.Admin1.subset_boucle, 0.01)
+  
+  # Convertir les données simplifiées en un format adapté à ggplot2
+  GADM.Admin1.subset.simp.ggplot_boucle <- fortify(GADM.Admin1.subset.simp_boucle, region = "row.names")
+  
+  # Ajouter les résultats à la liste des résultats
+  resultats[[sous_type]] <- list(subset = GADM.Admin1.subset_boucle,
+                                 simp = GADM.Admin1.subset.simp_boucle,
+                                 ggplot = GADM.Admin1.subset.simp.ggplot_boucle)
+}
+
+# Accéder aux résultats pour chaque sous-type
+GADM.Admin1.subset_Eur_Rest <- resultats$Eur$subset
+GADM.Admin1.subset.simp_Eur_Rest <- resultats$Eur$simp
+GADM.Admin1.subset.simp.ggplot_Eur_Rest <- resultats$Eur$ggplot
+
+GADM.Admin1.subset_Sib_Rest <- resultats$Sib$subset
+GADM.Admin1.subset.simp_Sib_Rest <- resultats$Sib$simp
+GADM.Admin1.subset.simp.ggplot_Sib_Rest <- resultats$Sib$ggplot
+
+GADM.Admin1.subset_FE_Rest <- resultats$FE$subset
+GADM.Admin1.subset.simp_FE_Rest <- resultats$FE$simp
+GADM.Admin1.subset.simp.ggplot_FE_Rest <- resultats$FE$ggplot
+
+GADM.Admin1.subset_unknown_Rest <- resultats$unknown$subset
+GADM.Admin1.subset.simp_unknown_Rest <- resultats$unknown$simp
+GADM.Admin1.subset.simp.ggplot_unknown_Rest <- resultats$unknown$ggplot
+
+
+
+
+
+
+
+
+
+
+#showing polygons of sequences with Admin-2 information by subtype
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_Eur_Russia_China_KAZ, aes(x = long, y = lat, group = group, fill = "Eur"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_FE_Russia_China_KAZ, aes(x = long, y = lat, group = group, fill = "FE"), colour = "blue4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_Sib_Russia_China_KAZ, aes(x = long, y = lat, group = group, fill = "Sib"), colour = "green4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_unknown_Russia_China_KAZ, aes(x = long, y = lat, group = group, fill = "Unknown"), colour = "orange4", alpha = 0.5) +
+    geom_polygon(data = GADM.Admin1.subset.simp.ggplot_Eur_Rest, aes(x = long, y = lat, group = group, fill = "Eur"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_FE_Rest, aes(x = long, y = lat, group = group, fill = "FE"), colour = "blue4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_Sib_Rest, aes(x = long, y = lat, group = group, fill = "Sib"), colour = "green4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_unknown_Rest, aes(x = long, y = lat, group = group, fill = "Unknown"), colour = "orange4", alpha = 0.5) +
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  theme(panel.background = element_blank(), 
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), 
+        axis.ticks=element_blank()) + 
+  labs(title="China, Russia and Kazakhstan in Admin2 and the rest of the countries in Admin 1 ",caption = paste("Full dataset - Samples with Admin-1 and Admin-2 information (N=",Title.Admin2.Admin1,")",sep = "")) +
+  scale_fill_manual(name = "Subtype",
+                    values = c(Eur = "red3", FE = "blue3", Sib = "green3", Unknown = "orange3"),
+                    labels = c("Eur", "FE", "Sib", "Unknown"),
+                    guide = guide_legend(override.aes = list(colour = c("red4", "blue4", "green4", "orange4")),
+                                          keywidth = 0.5,
+                                          spacing = 0.5))
+```
+
+
+
+##TBEV with Admin 2 in Russia and China and Admin 1 in rest of countries by subtypes 
+
+```{r}
+#Russia:China
+#Separation of data into subtypes dataframes
+liste_subtypes_Admin2_mutate_Russia_China_KAZ <- split(subtypes_Admin2_mutate_Russia_China_KAZ, subtypes_Admin2_mutate_Russia_China_KAZ$subtype)
+
+# Liste des noms de sous-types
+sous_types <- c("Eur", "Sib", "FE", "unknown")
+
+# Créer une liste pour stocker les résultats pour chaque sous-type
+resultats <- list()
+
+#Separation of data into subtypes dataframes
+# Boucle pour chaque sous-type
+for (sous_type in sous_types) {
+  # Sélectionner le sous-type de la liste
+  subtypes_Admin2_mutate_boucle_Russia_China <- liste_subtypes_Admin2_mutate_Russia_China_KAZ[[sous_type]]
+  
+  # Filtrer GADM.Admin2
+  GADM.Admin2.subset_boucle <- GADM.Admin2 %>%
+    subset(GID_0 %in% c("RUS", "CHN") & 
+             NAME_1 %in% unique(subtypes_Admin2_mutate_boucle_Russia_China$Admin1) & 
+             NAME_2 %in% unique(subtypes_Admin2_mutate_boucle_Russia_China$Admin2))
+  
+  # Simplifier les données géographiques
+  GADM.Admin2.subset.simp_boucle <- gSimplify(GADM.Admin2.subset_boucle, 0.01)
+  
+  # Convertir les données simplifiées en un format adapté à ggplot2
+  GADM.Admin2.subset.simp.ggplot_boucle <- fortify(GADM.Admin2.subset.simp_boucle, region = "row.names")
+  
+  # Ajouter les résultats à la liste des résultats
+  resultats[[sous_type]] <- list(subset = GADM.Admin2.subset_boucle,
+                                 simp = GADM.Admin2.subset.simp_boucle,
+                                 ggplot = GADM.Admin2.subset.simp.ggplot_boucle)
+}
+
+# Accéder aux résultats pour chaque sous-type
+GADM.Admin2.subset_Eur_Russia_China <- resultats$Eur$subset
+GADM.Admin2.subset.simp_Eur_Russia_China <- resultats$Eur$simp
+GADM.Admin2.subset.simp.ggplot_Eur_Russia_China <- resultats$Eur$ggplot
+
+GADM.Admin2.subset_Sib_Russia_China <- resultats$Sib$subset
+GADM.Admin2.subset.simp_Sib_Russia_China <- resultats$Sib$simp
+GADM.Admin2.subset.simp.ggplot_Sib_Russia_China <- resultats$Sib$ggplot
+
+GADM.Admin2.subset_FE_Russia_China <- resultats$FE$subset
+GADM.Admin2.subset.simp_FE_Russia_China <- resultats$FE$simp
+GADM.Admin2.subset.simp.ggplot_FE_Russia_China <- resultats$FE$ggplot
+
+GADM.Admin2.subset_unknown_Russia_China <- resultats$unknown$subset
+GADM.Admin2.subset.simp_unknown_Russia_China <- resultats$unknown$simp
+GADM.Admin2.subset.simp.ggplot_unknown_Russia_China <- resultats$unknown$ggplot
+
+#Rest of countries
+#Separation of data into subtypes dataframes
+liste_subtypes_Admin1_mutate_Rest <- split(subtypes_Admin1_mutate_Rest, subtypes_Admin1_mutate_Rest$subtype)
+
+# Liste des noms de sous-types
+sous_types <- c("Eur", "Sib", "FE", "unknown")
+
+# Créer une liste pour stocker les résultats pour chaque sous-type
+resultats <- list()
+
+#Separation of data into subtypes dataframes  
+# Boucle pour chaque sous-type
+for (sous_type in sous_types) {
+  # Sélectionner le sous-type de la liste
+  subtypes_Admin1_mutate_boucle_Rest <- liste_subtypes_Admin1_mutate_Rest[[sous_type]]
+  
+  # Filtrer GADM.Admin1
+  GADM.Admin1.subset_boucle <- GADM.Admin1 %>%
+    subset(GID_0 %in% unique(subtypes_Admin1_mutate_boucle_Rest$Country) & 
+             NAME_1 %in% unique(subtypes_Admin1_mutate_boucle_Rest$Admin1))
+  
+  # Simplifier les données géographiques
+  GADM.Admin1.subset.simp_boucle <- gSimplify(GADM.Admin1.subset_boucle, 0.01)
+  
+  # Convertir les données simplifiées en un format adapté à ggplot2
+  GADM.Admin1.subset.simp.ggplot_boucle <- fortify(GADM.Admin1.subset.simp_boucle, region = "row.names")
+  
+  # Ajouter les résultats à la liste des résultats
+  resultats[[sous_type]] <- list(subset = GADM.Admin1.subset_boucle,
+                                 simp = GADM.Admin1.subset.simp_boucle,
+                                 ggplot = GADM.Admin1.subset.simp.ggplot_boucle)
+}
+
+# Accéder aux résultats pour chaque sous-type
+GADM.Admin1.subset_Eur_Rest <- resultats$Eur$subset
+GADM.Admin1.subset.simp_Eur_Rest <- resultats$Eur$simp
+GADM.Admin1.subset.simp.ggplot_Eur_Rest <- resultats$Eur$ggplot
+
+GADM.Admin1.subset_Sib_Rest <- resultats$Sib$subset
+GADM.Admin1.subset.simp_Sib_Rest <- resultats$Sib$simp
+GADM.Admin1.subset.simp.ggplot_Sib_Rest <- resultats$Sib$ggplot
+
+GADM.Admin1.subset_FE_Rest <- resultats$FE$subset
+GADM.Admin1.subset.simp_FE_Rest <- resultats$FE$simp
+GADM.Admin1.subset.simp.ggplot_FE_Rest <- resultats$FE$ggplot
+
+GADM.Admin1.subset_unknown_Rest <- resultats$unknown$subset
+GADM.Admin1.subset.simp_unknown_Rest <- resultats$unknown$simp
+GADM.Admin1.subset.simp.ggplot_unknown_Rest <- resultats$unknown$ggplot
+
+
+
+
+
+
+
+
+
+
+#showing polygons of sequences with Admin-2 information by subtype
+ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_Eur_Russia_China, aes(x = long, y = lat, group = group, fill = "Eur"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_FE_Russia_China, aes(x = long, y = lat, group = group, fill = "FE"), colour = "blue4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_Sib_Russia_China, aes(x = long, y = lat, group = group, fill = "Sib"), colour = "green4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_unknown_Russia_China, aes(x = long, y = lat, group = group, fill = "Unknown"), colour = "orange4", alpha = 0.5) +
+    geom_polygon(data = GADM.Admin1.subset.simp.ggplot_Eur_Rest, aes(x = long, y = lat, group = group, fill = "Eur"), colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_FE_Rest, aes(x = long, y = lat, group = group, fill = "FE"), colour = "blue4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_Sib_Rest, aes(x = long, y = lat, group = group, fill = "Sib"), colour = "green4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_unknown_Rest, aes(x = long, y = lat, group = group, fill = "Unknown"), colour = "orange4", alpha = 0.5) +
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  xlab("") + 
+  ylab("") +
+  theme(panel.background = element_blank(), 
+        panel.grid.major = element_line(size = 0.25, linetype = 'dashed', colour = "black"), 
+        axis.ticks=element_blank()) + 
+  labs(title="China and Russia in Admin2 and the rest of the countries in Admin 1 ",caption = paste("Full dataset - Samples with Admin-1 and Admin-2 information (N=",Title.Admin2.Admin1,")",sep = "")) +
+  scale_fill_manual(name = "Subtype",
+                    values = c(Eur = "red3", FE = "blue3", Sib = "green3", Unknown = "orange3"),
+                    labels = c("Eur", "FE", "Sib", "Unknown"),
+                    guide = guide_legend(override.aes = list(colour = c("red4", "blue4", "green4", "orange4")),
+                                          keywidth = 0.5,
+                                          spacing = 0.5))
+
+
+
+
+```
+
+##TBEV with Admin 2 in Russia and China and Admin 1 in rest of countries by subtypes 
+
+
+```{r}
+plot_Eur <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_Eur_Russia_China, aes(x = long, y = lat, group = group), fill = "red3", colour = "red4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_Eur_Rest, aes(x = long, y = lat, group = group), fill = "red3", colour = "red4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Eur") +
+  theme_void()
+
+plot_Sib <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_Sib_Russia_China, aes(x = long, y = lat, group = group), fill = "green3", colour = "green4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_Sib_Rest, aes(x = long, y = lat, group = group), fill = "green3", colour = "green4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Sib") +
+  theme_void()
+
+plot_FE <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_FE_Russia_China, aes(x = long, y = lat, group = group), fill = "blue3", colour = "blue4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_FE_Rest, aes(x = long, y = lat, group = group), fill = "blue3", colour = "blue4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "FE") +
+  theme_void()
+
+plot_Unknown <- ggplot() + 
+  geom_polygon(data = GADM.Admin0.simp.ggplot, aes(x = long, y = lat, group = group), fill = "grey90", colour = "grey80", alpha = 0.8) + 
+  geom_polygon(data = GADM.Admin2.subset.simp.ggplot_unknown_Russia_China, aes(x = long, y = lat, group = group), fill = "orange3", colour = "orange4", alpha = 0.5) + 
+  geom_polygon(data = GADM.Admin1.subset.simp.ggplot_unknown_Rest, aes(x = long, y = lat, group = group), fill = "orange3", colour = "orange4", alpha = 0.5) + 
+  coord_map("ortho", orientation = c(60, 80, 0), xlim=c(0,180), ylim=c(30,90)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 5), labels = NULL) +
+  scale_x_continuous(breaks = NULL) +
+  labs(title = "Unknown") +
+  theme_void()
+
+# Affichage des plots séparés
+plot_Eur
+plot_Sib
+plot_FE
+plot_Unknown
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
